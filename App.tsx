@@ -7,8 +7,7 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
-  TouchableOpacity,
-  ListRenderItemInfo
+  TouchableOpacity
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -61,6 +60,37 @@ const sanitizePositiveNumber = (value: string, fallback: number): number => {
     return fallback;
   }
   return parsed;
+};
+
+const toRadians = (degrees: number): number => (degrees * Math.PI) / 180;
+
+const estimateRoute = (
+  startLat: number,
+  startLon: number,
+  endLat: number,
+  endLon: number
+): { distanceKm: number; durationMin: number } => {
+  // Haversine straight-line distance, scaled to approximate real roads.
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(endLat - startLat);
+  const dLon = toRadians(endLon - startLon);
+  const lat1 = toRadians(startLat);
+  const lat2 = toRadians(endLat);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const straightLineKm = earthRadiusKm * c;
+
+  const estimatedRoadKm = Math.max(straightLineKm * 1.3, 0.5);
+  const avgCitySpeedKmh = 45;
+  const estimatedDurationMin = (estimatedRoadKm / avgCitySpeedKmh) * 60;
+
+  return {
+    distanceKm: estimatedRoadKm,
+    durationMin: estimatedDurationMin
+  };
 };
 
 const mapWithConcurrency = async <T, R>(
@@ -166,8 +196,8 @@ const getDrivingRoute = async (startLat: number, startLon: number, endLat: numbe
       durationMin: route.duration / 60
     };
   } catch (err) {
-    console.warn("OSRM routing failed (rate limit or network). Skipping this station.");
-    return null;
+    console.warn('OSRM routing failed. Using estimated route instead.');
+    return estimateRoute(startLat, startLon, endLat, endLon);
   }
 };
 
@@ -259,11 +289,9 @@ export default function App() {
         station.location.latitude, station.location.longitude
       );
       
-      if (!route) {
-        return null;
-      }
+      if (!route) return null;
 
-      // --- THE OPTIMIZATION MATH ---
+      // --- THE OPTIMISATION MATH ---
       // Price is provided in cents (e.g., 195.9), convert to dollars
       const pricePerLiter = stationPriceInfo.price / 100; 
       const roundTripDistance = route.distanceKm * 2;
@@ -381,7 +409,7 @@ export default function App() {
   /**
    * @param {{ item: { name: string, priceCents: number, distanceKm: number, durationMin: number, totalCostDollars: number }, index: number }} props
    */
-  const renderItem = ({ item, index }: ListRenderItemInfo<RankedStation>) => (
+  const renderItem = ({ item, index }: { item: RankedStation; index: number }) => (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.rankBadge}>
@@ -416,7 +444,7 @@ export default function App() {
         <View style={styles.header}>
           <View style={styles.headerRow}>
             <View>
-              <Text style={styles.title}>Fuel Optimizer</Text>
+              <Text style={styles.title}>Fuel Optimiser</Text>
               <Text style={styles.subtitle}>Top 5 stops based on price & distance</Text>
             </View>
             <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.settingsButton}>
@@ -466,12 +494,13 @@ export default function App() {
             <Text style={styles.loadingText}>Calculating optimal routes...</Text>
           </View>
         ) : (
-          <FlatList<RankedStation>
-            data={rankedStations}
-            keyExtractor={(item) => item.code}
-            renderItem={renderItem}
-            contentContainerStyle={styles.listContainer}
-          />
+          <View style={styles.listContainer}>
+            <FlatList<RankedStation>
+              data={rankedStations}
+              keyExtractor={(item) => item.code}
+              renderItem={renderItem}
+            />
+          </View>
         )}
       </SafeAreaView>
     </SafeAreaProvider>

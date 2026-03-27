@@ -7,7 +7,8 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
-  TouchableOpacity
+  TouchableOpacity,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -21,6 +22,7 @@ const TARGET_NEARBY_STATIONS = 40;
 const MAX_ROUTE_CALCULATIONS = 20;
 const DEFAULT_FUEL_TYPE = 'E10';
 const FUEL_TYPE_OPTIONS = ['E10', 'U91', 'P95', 'P98', 'DL'];
+const BRAND_OPTIONS = ['BP', 'Ampol Foodary', 'Metro Fuel', 'Shell'];
 const AVG_CITY_SPEED_KMH = 45;
 
 type Station = {
@@ -142,6 +144,15 @@ const normalizeFuelType = (value: string): string => {
   return normalized || DEFAULT_FUEL_TYPE;
 };
 
+const normalizeBrands = (brands: string[]): string[] => {
+  return brands.map((brand) => brand.trim()).filter((brand) => brand.length > 0);
+};
+
+const sameOrderedStringArray = (a: string[], b: string[]): boolean => {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+};
+
 const normalizeFuelApiData = (input: unknown): FuelApiData | null => {
   if (!input || typeof input !== 'object') return null;
 
@@ -228,6 +239,20 @@ const fetchNearbyFuelData = async (
   radiusKm: number,
   fueltype: string
 ): Promise<FuelApiData | null> => {
+  const normalizedBrandArray = Array.from(new Set(normalizeBrands(brand)));
+  const requestBody: Record<string, unknown> = {
+    fueltype,
+    latitude: latitude.toString(),
+    longitude: longitude.toString(),
+    radius: radiusKm.toString(),
+    sortby: 'price',
+    sortascending: 'true'
+  };
+
+  if (normalizedBrandArray.length > 0) {
+    requestBody.brand = normalizedBrandArray;
+  }
+
   const response = await fetch('https://api.onegov.nsw.gov.au/FuelPriceCheck/v2/fuel/prices/nearby', {
     method: 'POST',
     headers: {
@@ -237,15 +262,7 @@ const fetchNearbyFuelData = async (
       'transactionid': `req-${Date.now()}-${radiusKm}`,
       'requesttimestamp': getFormattedUTCDateTime()
     },
-    body: JSON.stringify({
-      fueltype,
-      brand,
-      latitude: latitude.toString(),
-      longitude: longitude.toString(),
-      radius: radiusKm.toString(),
-      sortby: 'price',
-      sortascending: 'true'
-    })
+    body: JSON.stringify(requestBody)
   });
 
   if (!response.ok) {
@@ -387,6 +404,8 @@ export default function App() {
   const [fuelEconomy, setFuelEconomy] = useState('8.0');
   const [fuelType, setFuelType] = useState(DEFAULT_FUEL_TYPE);
   const [appliedFuelType, setAppliedFuelType] = useState(DEFAULT_FUEL_TYPE);
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
+  const [appliedBrands, setAppliedBrands] = useState<string[]>([]);
   const isMountedRef = useRef(true);
   const latestRankingRequestIdRef = useRef(0);
 
@@ -475,9 +494,17 @@ export default function App() {
    * @param {string} needed
    * @param {string} economy
    */
-  const fetchAndRankFuelData = useCallback(async (userLat: number, userLon: number, needed: string, economy: string, fuelTypeInput: string) => {
+  const fetchAndRankFuelData = useCallback(async (
+    userLat: number,
+    userLon: number,
+    needed: string,
+    economy: string,
+    fuelTypeInput: string,
+    brandsInput: string[]
+  ) => {
     try {
       const requestFuelType = normalizeFuelType(fuelTypeInput);
+      const requestBrands = normalizeBrands(brandsInput);
 
       // 1. Get the dynamic Bearer Token automatically
       const accessToken = await getAccessToken();
@@ -487,7 +514,7 @@ export default function App() {
       for (const radiusKm of NEARBY_RADIUS_STEPS_KM) {
         const nearbyData = await fetchNearbyFuelData(
           accessToken,
-          [],
+          requestBrands,
           userLat,
           userLon,
           radiusKm,
@@ -510,6 +537,7 @@ export default function App() {
 
       setApiData(selectedData);
       setAppliedFuelType(requestFuelType);
+      setAppliedBrands(requestBrands);
       setErrorMsg(null);
       const rankedCount = await processAndRank(selectedData, userLat, userLon, needed, economy);
       if (rankedCount === -1) {
@@ -551,7 +579,7 @@ export default function App() {
         setUserLocation(location);
 
         // 2. Fetch Fuel Data (passing initial state values)
-        await fetchAndRankFuelData(location.coords.latitude, location.coords.longitude, '50', '8.0', DEFAULT_FUEL_TYPE);
+        await fetchAndRankFuelData(location.coords.latitude, location.coords.longitude, '50', '8.0', DEFAULT_FUEL_TYPE, []);
       } catch (err) {
         setErrorMsg(getErrorMessage(err, 'An error occurred while initializing.'));
         setLoading(false);
@@ -567,16 +595,20 @@ export default function App() {
     }
 
     const nextFuelType = normalizeFuelType(fuelType);
+    const nextBrands = normalizeBrands(selectedBrands);
+    const brandsChanged = !sameOrderedStringArray(nextBrands, appliedBrands);
     setFuelType(nextFuelType);
+    setSelectedBrands(nextBrands);
     setLoading(true); // Show loader while calculating/fetching
 
-    if (nextFuelType !== appliedFuelType) {
+    if (nextFuelType !== appliedFuelType || brandsChanged) {
       fetchAndRankFuelData(
         userLocation.coords.latitude,
         userLocation.coords.longitude,
         fuelNeeded,
         fuelEconomy,
-        nextFuelType
+        nextFuelType,
+        nextBrands
       );
       return;
     }
@@ -649,6 +681,16 @@ export default function App() {
     </View>
   );
 
+  const toggleBrandSelection = (brand: string) => {
+    setSelectedBrands((prev) => {
+      const next = prev.includes(brand)
+        ? prev.filter((value) => value !== brand)
+        : [...prev, brand];
+
+      return BRAND_OPTIONS.filter((option) => next.includes(option));
+    });
+  };
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.container}>
@@ -672,8 +714,10 @@ export default function App() {
 
         {/* Settings Modal */}
         <Modal visible={showSettings} animationType="fade" transparent={true}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+          <TouchableWithoutFeedback onPress={() => setShowSettings(false)}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback onPress={() => undefined}>
+                <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Vehicle Settings</Text>
               
               <Text style={styles.inputLabel}>Fuel Needed (Liters)</Text>
@@ -710,11 +754,29 @@ export default function App() {
                 })}
               </View>
 
+              <Text style={styles.inputLabel}>Brands (Optional)</Text>
+              <View style={styles.fuelTypeRow}>
+                {BRAND_OPTIONS.map((option) => {
+                  const selected = selectedBrands.includes(option);
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
+                      onPress={() => toggleBrandSelection(option)}
+                    >
+                      <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>{option}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
                 <Text style={styles.saveButtonText}>Save & Recalculate</Text>
               </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
             </View>
-          </View>
+          </TouchableWithoutFeedback>
         </Modal>
 
         {errorMsg ? (

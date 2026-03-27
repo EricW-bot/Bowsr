@@ -16,6 +16,12 @@ import * as Location from 'expo-location';
 const API_KEY = '4ICQizjkv8QmJpSEDoQ7Aq1a2ZwHT3G5';
 const BASIC_AUTH_HEADER = 'Basic NElDUWl6amt2OFFtSnBTRURvUTdBcTFhMlp3SFQzRzU6eVN5Z3JCZnhIV0M2RFRoSQ==';
 const ALLOW_MOCK_FALLBACK = false;
+const NEARBY_RADIUS_STEPS_KM = [3, 5, 8, 12, 18];
+const TARGET_NEARBY_STATIONS = 40;
+const MAX_ROUTE_CALCULATIONS = 30;
+const ROUTE_CONCURRENCY = 8;
+const DEFAULT_FUEL_TYPE = 'E10';
+const FUEL_TYPE_OPTIONS = ['E10', 'U91', 'P95', 'P98', 'DL'];
 
 type Station = {
   brandid?: string;
@@ -131,6 +137,11 @@ const toNumberValue = (value: unknown): number | null => {
   return null;
 };
 
+const normalizeFuelType = (value: string): string => {
+  const normalized = value.trim().toUpperCase();
+  return normalized || DEFAULT_FUEL_TYPE;
+};
+
 const normalizeFuelApiData = (input: unknown): FuelApiData | null => {
   if (!input || typeof input !== 'object') return null;
 
@@ -202,6 +213,42 @@ const normalizeFuelApiData = (input: unknown): FuelApiData | null => {
   }
 
   return null;
+};
+
+const fetchNearbyFuelData = async (
+  accessToken: string,
+  brand: string[],
+  latitude: number,
+  longitude: number,
+  radiusKm: number,
+  fueltype: string
+): Promise<FuelApiData | null> => {
+  const response = await fetch('https://api.onegov.nsw.gov.au/FuelPriceCheck/v2/fuel/prices/nearby', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json; charset=utf-8',
+      'apikey': API_KEY,
+      'transactionid': `req-${Date.now()}-${radiusKm}`,
+      'requesttimestamp': getFormattedUTCDateTime()
+    },
+    body: JSON.stringify({
+      fueltype,
+      brand,
+      latitude: latitude.toString(),
+      longitude: longitude.toString(),
+      radius: radiusKm.toString(),
+      sortby: 'price',
+      sortascending: 'true'
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Nearby API failed with status ${response.status}`);
+  }
+
+  const payload: unknown = await response.json();
+  return normalizeFuelApiData(payload);
 };
 
 /**
@@ -333,6 +380,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [fuelNeeded, setFuelNeeded] = useState('50');
   const [fuelEconomy, setFuelEconomy] = useState('8.0');
+  const [fuelType, setFuelType] = useState(DEFAULT_FUEL_TYPE);
+  const [appliedFuelType, setAppliedFuelType] = useState(DEFAULT_FUEL_TYPE);
   const isMountedRef = useRef(true);
   const latestRankingRequestIdRef = useRef(0);
 
@@ -358,8 +407,11 @@ export default function App() {
     const economyLper100km = sanitizePositiveNumber(economyStr, 8.0);
     const litersPerKm = economyLper100km / 100;
 
+    // Nearby endpoint is sorted by price, so route only the best subset for speed.
+    const routeCandidateStations = stations.slice(0, MAX_ROUTE_CALCULATIONS);
+
     // Avoid flooding public routing APIs with too many parallel requests.
-    const rankedCandidates = await mapWithConcurrency(stations, 5, async (station): Promise<RankedStation | null> => {
+    const rankedCandidates = await mapWithConcurrency(routeCandidateStations, ROUTE_CONCURRENCY, async (station): Promise<RankedStation | null> => {
       const stationPriceInfo = prices.find((p) => p.stationcode === station.code);
       if (!stationPriceInfo || !Number.isFinite(stationPriceInfo.price)) {
         return null;
@@ -414,37 +466,45 @@ export default function App() {
    * @param {string} needed
    * @param {string} economy
    */
-  const fetchAndRankFuelData = useCallback(async (userLat: number, userLon: number, needed: string, economy: string) => {
+  const fetchAndRankFuelData = useCallback(async (userLat: number, userLon: number, needed: string, economy: string, fuelTypeInput: string) => {
     try {
+      const requestFuelType = normalizeFuelType(fuelTypeInput);
+
       // 1. Get the dynamic Bearer Token automatically
       const accessToken = await getAccessToken();
 
-      // 2. Fetch Live Fuel Data
-      const response = await fetch('https://api.onegov.nsw.gov.au/FuelPriceCheck/v2/fuel/prices', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json; charset=utf-8',
-          'apikey': API_KEY,
-          'transactionid': `req-${Date.now()}`,
-          'requesttimestamp': getFormattedUTCDateTime()
+      // 2. Search progressively wider radii until we have enough stations.
+      let selectedData: FuelApiData | null = null;
+      for (const radiusKm of NEARBY_RADIUS_STEPS_KM) {
+        const nearbyData = await fetchNearbyFuelData(
+          accessToken,
+          [],
+          userLat,
+          userLon,
+          radiusKm,
+          requestFuelType
+        );
+
+        if (nearbyData && nearbyData.stations.length > 0 && nearbyData.prices.length > 0) {
+          selectedData = nearbyData;
         }
-      });
 
-      if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}. Falling back to mock data.`);
+        if ((nearbyData?.stations.length || 0) >= TARGET_NEARBY_STATIONS) {
+          selectedData = nearbyData;
+          break;
+        }
       }
 
-      const data: unknown = await response.json();
-      const normalizedData = normalizeFuelApiData(data);
-      if (!normalizedData) {
-        throw new Error('Fuel API response format was invalid. Falling back to mock data.');
+      if (!selectedData) {
+        throw new Error('Nearby API returned no usable stations for selected radii.');
       }
 
-      setApiData(normalizedData);
+      setApiData(selectedData);
+      setAppliedFuelType(requestFuelType);
       setErrorMsg(null);
-      const rankedCount = await processAndRank(normalizedData, userLat, userLon, needed, economy);
+      const rankedCount = await processAndRank(selectedData, userLat, userLon, needed, economy);
       if (rankedCount === 0) {
-        throw new Error('Live data did not produce rankable stations. Falling back to mock data.');
+        throw new Error('Nearby API data did not produce rankable stations.');
       }
 
     } catch (err) {
@@ -477,7 +537,7 @@ export default function App() {
         setUserLocation(location);
 
         // 2. Fetch Fuel Data (passing initial state values)
-        await fetchAndRankFuelData(location.coords.latitude, location.coords.longitude, '50', '8.0');
+        await fetchAndRankFuelData(location.coords.latitude, location.coords.longitude, '50', '8.0', DEFAULT_FUEL_TYPE);
       } catch (err) {
         setErrorMsg(getErrorMessage(err, 'An error occurred while initializing.'));
         setLoading(false);
@@ -488,7 +548,26 @@ export default function App() {
   // --- Handlers ---
   const handleSaveSettings = () => {
     setShowSettings(false);
-    if (apiData && userLocation) {
+    if (!userLocation) {
+      return;
+    }
+
+    const nextFuelType = normalizeFuelType(fuelType);
+    setFuelType(nextFuelType);
+    setLoading(true); // Show loader while calculating/fetching
+
+    if (nextFuelType !== appliedFuelType) {
+      fetchAndRankFuelData(
+        userLocation.coords.latitude,
+        userLocation.coords.longitude,
+        fuelNeeded,
+        fuelEconomy,
+        nextFuelType
+      );
+      return;
+    }
+
+    if (apiData) {
       setLoading(true); // Show loader while fetching new routes
       processAndRank(
         apiData, 
@@ -498,15 +577,20 @@ export default function App() {
         fuelEconomy
       ).then((rankedCount) => {
         if (rankedCount === 0) {
-          const fallbackData = generateMockData(userLocation.coords.latitude, userLocation.coords.longitude);
-          setApiData(fallbackData);
-          processAndRank(
-            fallbackData,
-            userLocation.coords.latitude,
-            userLocation.coords.longitude,
-            fuelNeeded,
-            fuelEconomy
-          );
+          if (ALLOW_MOCK_FALLBACK) {
+            const fallbackData = generateMockData(userLocation.coords.latitude, userLocation.coords.longitude);
+            setApiData(fallbackData);
+            processAndRank(
+              fallbackData,
+              userLocation.coords.latitude,
+              userLocation.coords.longitude,
+              fuelNeeded,
+              fuelEconomy
+            );
+          } else {
+            setLoading(false);
+            setErrorMsg('No rankable stations found for current settings. Try a different fuel type or wider radius.');
+          }
         }
       });
     }
@@ -583,6 +667,22 @@ export default function App() {
                 onChangeText={setFuelEconomy}
                 placeholder="e.g. 8.0"
               />
+
+              <Text style={styles.inputLabel}>Fuel Type</Text>
+              <View style={styles.fuelTypeRow}>
+                {FUEL_TYPE_OPTIONS.map((option) => {
+                  const selected = fuelType === option;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
+                      onPress={() => setFuelType(option)}
+                    >
+                      <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>{option}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
               <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
                 <Text style={styles.saveButtonText}>Save & Recalculate</Text>
@@ -777,6 +877,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 20,
     backgroundColor: '#f9f9f9',
+  },
+  fuelTypeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 20,
+  },
+  fuelTypeChip: {
+    borderWidth: 1,
+    borderColor: '#b0bec5',
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginRight: 8,
+    marginBottom: 8,
+    backgroundColor: '#fff',
+  },
+  fuelTypeChipSelected: {
+    borderColor: '#0066cc',
+    backgroundColor: '#e8f2ff',
+  },
+  fuelTypeChipText: {
+    color: '#546e7a',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  fuelTypeChipTextSelected: {
+    color: '#0066cc',
   },
   saveButton: {
     backgroundColor: '#0066cc',

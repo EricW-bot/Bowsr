@@ -3,7 +3,7 @@ import {
   StyleSheet, 
   Text, 
   View, 
-  FlatList, 
+  ScrollView,
   ActivityIndicator,
   Modal,
   TextInput,
@@ -15,6 +15,7 @@ import * as Location from 'expo-location';
 // --- API Configuration ---
 const API_KEY = '4ICQizjkv8QmJpSEDoQ7Aq1a2ZwHT3G5';
 const BASIC_AUTH_HEADER = 'Basic NElDUWl6amt2OFFtSnBTRURvUTdBcTFhMlp3SFQzRzU6eVN5Z3JCZnhIV0M2RFRoSQ==';
+const ALLOW_MOCK_FALLBACK = false;
 
 type Station = {
   brandid?: string;
@@ -115,12 +116,92 @@ const mapWithConcurrency = async <T, R>(
   return results;
 };
 
-const isFuelApiData = (input: unknown): input is FuelApiData => {
-  if (!input || typeof input !== 'object') {
-    return false;
+const toStringValue = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  return '';
+};
+
+const toNumberValue = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) return parsed;
   }
-  const candidate = input as { stations?: unknown; prices?: unknown };
-  return Array.isArray(candidate.stations) && Array.isArray(candidate.prices);
+  return null;
+};
+
+const normalizeFuelApiData = (input: unknown): FuelApiData | null => {
+  if (!input || typeof input !== 'object') return null;
+
+  const root = input as Record<string, unknown>;
+  const candidateContainers: Record<string, unknown>[] = [
+    root,
+    (root.data as Record<string, unknown>) || {},
+    (root.payload as Record<string, unknown>) || {},
+    (root.result as Record<string, unknown>) || {}
+  ];
+
+  for (const container of candidateContainers) {
+    const rawStations = (container.stations as unknown[]) || [];
+    const rawPrices = (container.prices as unknown[]) || [];
+
+    if (!Array.isArray(rawStations) || !Array.isArray(rawPrices)) {
+      continue;
+    }
+
+    const stations: Station[] = rawStations
+      .map<Station | null>((s) => {
+        const station = (s || {}) as Record<string, unknown>;
+        const locationObj = (station.location || {}) as Record<string, unknown>;
+
+        const code = toStringValue(station.code ?? station.stationcode ?? station.stationCode);
+        const name = toStringValue(station.name ?? station.stationname ?? station.stationName);
+        const latitude = toNumberValue(locationObj.latitude ?? station.latitude);
+        const longitude = toNumberValue(locationObj.longitude ?? station.longitude);
+
+        if (!code || !name || latitude === null || longitude === null) {
+          return null;
+        }
+
+        return {
+          code,
+          name,
+          brand: toStringValue(station.brand),
+          address: toStringValue(station.address),
+          state: toStringValue(station.state),
+          brandid: toStringValue(station.brandid),
+          stationid: toStringValue(station.stationid),
+          location: { latitude, longitude }
+        };
+      })
+      .filter((item): item is Station => item !== null);
+
+    const prices: Price[] = rawPrices
+      .map<Price | null>((p) => {
+        const priceObj = (p || {}) as Record<string, unknown>;
+        const stationcode = toStringValue(priceObj.stationcode ?? priceObj.stationCode);
+        const price = toNumberValue(priceObj.price);
+        if (!stationcode || price === null) {
+          return null;
+        }
+
+        return {
+          stationcode,
+          price,
+          fueltype: toStringValue(priceObj.fueltype ?? priceObj.fuelType),
+          lastupdated: toStringValue(priceObj.lastupdated ?? priceObj.lastUpdated),
+          state: toStringValue(priceObj.state)
+        };
+      })
+      .filter((item): item is Price => item !== null);
+
+    if (stations.length > 0 && prices.length > 0) {
+      return { stations, prices };
+    }
+  }
+
+  return null;
 };
 
 /**
@@ -268,7 +349,7 @@ export default function App() {
    * @param {string} neededStr
    * @param {string} economyStr
    */
-  const processAndRank = useCallback(async (data: FuelApiData, userLat: number, userLon: number, neededStr: string, economyStr: string) => {
+  const processAndRank = useCallback(async (data: FuelApiData, userLat: number, userLon: number, neededStr: string, economyStr: string): Promise<number> => {
     const requestId = ++latestRankingRequestIdRef.current;
     const { stations, prices } = data;
     
@@ -311,7 +392,7 @@ export default function App() {
 
     // Ignore stale results if a newer recalculation started.
     if (!isMountedRef.current || requestId !== latestRankingRequestIdRef.current) {
-      return;
+      return 0;
     }
 
     // Filter out invalid routing results.
@@ -321,8 +402,10 @@ export default function App() {
     mergedList.sort((a, b) => a.totalCostDollars - b.totalCostDollars);
 
     // Keep top 5
-    setRankedStations(mergedList.slice(0, 5));
+    const topStations = mergedList.slice(0, 5);
+    setRankedStations(topStations);
     setLoading(false);
+    return topStations.length;
   }, []);
 
   /**
@@ -352,18 +435,30 @@ export default function App() {
       }
 
       const data: unknown = await response.json();
-      if (!isFuelApiData(data)) {
+      const normalizedData = normalizeFuelApiData(data);
+      if (!normalizedData) {
         throw new Error('Fuel API response format was invalid. Falling back to mock data.');
       }
 
-      setApiData(data); // Save raw data for instant recalculations
-      await processAndRank(data, userLat, userLon, needed, economy);
+      setApiData(normalizedData);
+      setErrorMsg(null);
+      const rankedCount = await processAndRank(normalizedData, userLat, userLon, needed, economy);
+      if (rankedCount === 0) {
+        throw new Error('Live data did not produce rankable stations. Falling back to mock data.');
+      }
 
     } catch (err) {
-      console.warn('Using mock data because real API failed or is missing keys.');
-      const mockData = generateMockData(userLat, userLon);
-      setApiData(mockData);
-      await processAndRank(mockData, userLat, userLon, needed, economy);
+      const liveError = getErrorMessage(err, 'Live data request failed.');
+      console.warn(`Live data failed: ${liveError}`);
+
+      if (ALLOW_MOCK_FALLBACK) {
+        const mockData = generateMockData(userLat, userLon);
+        setApiData(mockData);
+        await processAndRank(mockData, userLat, userLon, needed, economy);
+      } else {
+        setLoading(false);
+        setErrorMsg(`Live data failed: ${liveError}`);
+      }
     }
   }, [processAndRank]);
 
@@ -401,7 +496,19 @@ export default function App() {
         userLocation.coords.longitude, 
         fuelNeeded, 
         fuelEconomy
-      );
+      ).then((rankedCount) => {
+        if (rankedCount === 0) {
+          const fallbackData = generateMockData(userLocation.coords.latitude, userLocation.coords.longitude);
+          setApiData(fallbackData);
+          processAndRank(
+            fallbackData,
+            userLocation.coords.latitude,
+            userLocation.coords.longitude,
+            fuelNeeded,
+            fuelEconomy
+          );
+        }
+      });
     }
   };
 
@@ -495,11 +602,13 @@ export default function App() {
           </View>
         ) : (
           <View style={styles.listContainer}>
-            <FlatList<RankedStation>
-              data={rankedStations}
-              keyExtractor={(item) => item.code}
-              renderItem={renderItem}
-            />
+            {rankedStations.length === 0 ? (
+              <Text style={styles.emptyText}>No stations available right now. Try recalculating.</Text>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {rankedStations.map((item, index) => renderItem({ item, index }))}
+              </ScrollView>
+            )}
           </View>
         )}
       </SafeAreaView>
@@ -558,7 +667,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   listContainer: {
+    flex: 1,
     padding: 16,
+  },
+  emptyText: {
+    marginTop: 24,
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
   },
   card: {
     backgroundColor: '#fff',

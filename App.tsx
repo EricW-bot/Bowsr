@@ -18,10 +18,10 @@ const BASIC_AUTH_HEADER = 'Basic NElDUWl6amt2OFFtSnBTRURvUTdBcTFhMlp3SFQzRzU6eVN
 const ALLOW_MOCK_FALLBACK = false;
 const NEARBY_RADIUS_STEPS_KM = [3, 5, 8, 12, 18];
 const TARGET_NEARBY_STATIONS = 40;
-const MAX_ROUTE_CALCULATIONS = 30;
-const ROUTE_CONCURRENCY = 8;
+const MAX_ROUTE_CALCULATIONS = 20;
 const DEFAULT_FUEL_TYPE = 'E10';
 const FUEL_TYPE_OPTIONS = ['E10', 'U91', 'P95', 'P98', 'DL'];
+const AVG_CITY_SPEED_KMH = 45;
 
 type Station = {
   brandid?: string;
@@ -31,6 +31,7 @@ type Station = {
   name: string;
   address?: string;
   location: {
+    distance?: number;
     latitude: number;
     longitude: number;
   };
@@ -91,8 +92,7 @@ const estimateRoute = (
   const straightLineKm = earthRadiusKm * c;
 
   const estimatedRoadKm = Math.max(straightLineKm * 1.3, 0.5);
-  const avgCitySpeedKmh = 45;
-  const estimatedDurationMin = (estimatedRoadKm / avgCitySpeedKmh) * 60;
+  const estimatedDurationMin = (estimatedRoadKm / AVG_CITY_SPEED_KMH) * 60;
 
   return {
     distanceKm: estimatedRoadKm,
@@ -170,6 +170,7 @@ const normalizeFuelApiData = (input: unknown): FuelApiData | null => {
         const name = toStringValue(station.name ?? station.stationname ?? station.stationName);
         const latitude = toNumberValue(locationObj.latitude ?? station.latitude);
         const longitude = toNumberValue(locationObj.longitude ?? station.longitude);
+        const distance = toNumberValue(locationObj.distance);
 
         if (!code || !name || latitude === null || longitude === null) {
           return null;
@@ -183,7 +184,11 @@ const normalizeFuelApiData = (input: unknown): FuelApiData | null => {
           state: toStringValue(station.state),
           brandid: toStringValue(station.brandid),
           stationid: toStringValue(station.stationid),
-          location: { latitude, longitude }
+          location: {
+            latitude,
+            longitude,
+            ...(distance !== null ? { distance } : {})
+          }
         };
       })
       .filter((item): item is Station => item !== null);
@@ -409,20 +414,22 @@ export default function App() {
 
     // Nearby endpoint is sorted by price, so route only the best subset for speed.
     const routeCandidateStations = stations.slice(0, MAX_ROUTE_CALCULATIONS);
+    const priceByStationCode = new Map(prices.map((p) => [String(p.stationcode), p]));
 
-    // Avoid flooding public routing APIs with too many parallel requests.
-    const rankedCandidates = await mapWithConcurrency(routeCandidateStations, ROUTE_CONCURRENCY, async (station): Promise<RankedStation | null> => {
-      const stationPriceInfo = prices.find((p) => p.stationcode === station.code);
+    // Fast path: use nearby API distance to avoid expensive per-station route calls.
+    const rankedCandidates = routeCandidateStations.map<RankedStation | null>((station) => {
+      const stationPriceInfo = priceByStationCode.get(String(station.code));
       if (!stationPriceInfo || !Number.isFinite(stationPriceInfo.price)) {
         return null;
       }
 
-      const route = await getDrivingRoute(
-        userLat, userLon, 
-        station.location.latitude, station.location.longitude
-      );
-      
-      if (!route) return null;
+      const nearbyDistance = station.location.distance;
+      const route = Number.isFinite(nearbyDistance)
+        ? {
+            distanceKm: Math.max(nearbyDistance as number, 0.1),
+            durationMin: (Math.max(nearbyDistance as number, 0.1) / AVG_CITY_SPEED_KMH) * 60
+          }
+        : estimateRoute(userLat, userLon, station.location.latitude, station.location.longitude);
 
       // --- THE OPTIMISATION MATH ---
       // Price is provided in cents (e.g., 195.9), convert to dollars
@@ -444,7 +451,7 @@ export default function App() {
 
     // Ignore stale results if a newer recalculation started.
     if (!isMountedRef.current || requestId !== latestRankingRequestIdRef.current) {
-      return 0;
+      return -1;
     }
 
     // Filter out invalid routing results.
@@ -455,7 +462,9 @@ export default function App() {
 
     // Keep top 5
     const topStations = mergedList.slice(0, 5);
-    setRankedStations(topStations);
+    if (topStations.length > 0) {
+      setRankedStations(topStations);
+    }
     setLoading(false);
     return topStations.length;
   }, []);
@@ -503,8 +512,13 @@ export default function App() {
       setAppliedFuelType(requestFuelType);
       setErrorMsg(null);
       const rankedCount = await processAndRank(selectedData, userLat, userLon, needed, economy);
+      if (rankedCount === -1) {
+        return;
+      }
       if (rankedCount === 0) {
-        throw new Error('Nearby API data did not produce rankable stations.');
+        setLoading(false);
+        setErrorMsg('No rankable stations were returned for that fuel type/radius. Existing results kept.');
+        return;
       }
 
     } catch (err) {
@@ -576,6 +590,9 @@ export default function App() {
         fuelNeeded, 
         fuelEconomy
       ).then((rankedCount) => {
+        if (rankedCount === -1) {
+          return;
+        }
         if (rankedCount === 0) {
           if (ALLOW_MOCK_FALLBACK) {
             const fallbackData = generateMockData(userLocation.coords.latitude, userLocation.coords.longitude);
@@ -589,7 +606,7 @@ export default function App() {
             );
           } else {
             setLoading(false);
-            setErrorMsg('No rankable stations found for current settings. Try a different fuel type or wider radius.');
+            setErrorMsg('No rankable stations found for current settings. Previous results are still shown.');
           }
         }
       });
@@ -606,7 +623,10 @@ export default function App() {
         <View style={styles.rankBadge}>
           <Text style={styles.rankText}>#{index + 1}</Text>
         </View>
-        <Text style={styles.stationName}>{item.name}</Text>
+        <View style={styles.stationInfo}>
+          <Text style={styles.stationName}>{item.name}</Text>
+          <Text style={styles.stationAddress}>{item.address || 'Address unavailable'}</Text>
+        </View>
       </View>
       
       <View style={styles.statsRow}>
@@ -637,6 +657,12 @@ export default function App() {
             <View>
               <Text style={styles.title}>Fuel Optimiser</Text>
               <Text style={styles.subtitle}>Top 5 stops based on price & distance</Text>
+              <View style={styles.headerMetaRow}>
+                <View style={styles.fuelTypeBadge}>
+                  <Text style={styles.fuelTypeBadgeText}>{appliedFuelType}</Text>
+                </View>
+                <Text style={styles.metaHint}>Nearby smart radius</Text>
+              </View>
             </View>
             <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.settingsButton}>
               <Text style={styles.settingsIcon}>⚙️</Text>
@@ -719,13 +745,14 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f6f8',
+    backgroundColor: '#eef2f7',
   },
   header: {
     padding: 20,
-    backgroundColor: '#fff',
+    paddingBottom: 18,
+    backgroundColor: '#fbfdff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#dbe5ef',
   },
   headerRow: {
     flexDirection: 'row',
@@ -733,22 +760,51 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: 0.2,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
-    marginTop: 4,
+    color: '#475569',
+    marginTop: 6,
+  },
+  headerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  fuelTypeBadge: {
+    backgroundColor: '#e0edff',
+    borderColor: '#b7d2ff',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  fuelTypeBadgeText: {
+    color: '#0b4bb3',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  metaHint: {
+    marginLeft: 8,
+    fontSize: 12,
+    color: '#64748b',
   },
   settingsButton: {
-    padding: 8,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
+    width: 42,
+    height: 42,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#e8eef7',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d1dbea',
   },
   settingsIcon: {
-    fontSize: 20,
+    fontSize: 19,
   },
   centerBox: {
     flex: 1,
@@ -759,44 +815,47 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#444',
+    color: '#334155',
   },
   errorText: {
-    color: '#d32f2f',
+    color: '#b42318',
     fontSize: 16,
     textAlign: 'center',
   },
   listContainer: {
     flex: 1,
     padding: 16,
+    paddingBottom: 10,
   },
   emptyText: {
     marginTop: 24,
     fontSize: 16,
-    color: '#666',
+    color: '#64748b',
     textAlign: 'center',
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#d9e4f2',
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
   },
   cardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
+    alignItems: 'flex-start',
+    marginBottom: 14,
   },
   rankBadge: {
-    backgroundColor: '#0066cc',
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    backgroundColor: '#0b67d1',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -808,75 +867,91 @@ const styles = StyleSheet.create({
   },
   stationName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: '#1e293b',
     flex: 1,
+  },
+  stationInfo: {
+    flex: 1,
+  },
+  stationAddress: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#edf2f7',
+    paddingTop: 12,
   },
   statBox: {
     flex: 1,
+    paddingRight: 8,
   },
   highlightBox: {
     alignItems: 'flex-end',
+    paddingRight: 0,
   },
   statLabel: {
     fontSize: 12,
-    color: '#888',
+    color: '#7b8ba1',
     marginBottom: 4,
   },
   statValue: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
-    color: '#333',
+    color: '#243447',
   },
   costValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2e7d32', // Green for money/optimal
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1f7a40',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.42)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#fdfefe',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dce6f3',
     padding: 24,
     width: '100%',
     maxWidth: 400,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 18,
     elevation: 5,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '800',
     marginBottom: 20,
-    color: '#333',
+    color: '#1e293b',
     textAlign: 'center',
   },
   inputLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#555',
+    fontWeight: '700',
+    color: '#334155',
     marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
+    borderColor: '#c5d4e6',
+    borderRadius: 10,
     padding: 12,
     fontSize: 16,
     marginBottom: 20,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#f8fbff',
   },
   fuelTypeRow: {
     flexDirection: 'row',
@@ -885,36 +960,41 @@ const styles = StyleSheet.create({
   },
   fuelTypeChip: {
     borderWidth: 1,
-    borderColor: '#b0bec5',
+    borderColor: '#c2cfdf',
     borderRadius: 999,
     paddingVertical: 8,
     paddingHorizontal: 12,
     marginRight: 8,
     marginBottom: 8,
-    backgroundColor: '#fff',
+    backgroundColor: '#f8fbff',
   },
   fuelTypeChipSelected: {
-    borderColor: '#0066cc',
-    backgroundColor: '#e8f2ff',
+    borderColor: '#0b67d1',
+    backgroundColor: '#e7f1ff',
   },
   fuelTypeChipText: {
-    color: '#546e7a',
+    color: '#516273',
     fontSize: 13,
     fontWeight: '600',
   },
   fuelTypeChipTextSelected: {
-    color: '#0066cc',
+    color: '#0b67d1',
   },
   saveButton: {
-    backgroundColor: '#0066cc',
+    backgroundColor: '#0b67d1',
     padding: 14,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
     marginTop: 10,
+    shadowColor: '#0b67d1',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 3,
   },
   saveButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '800',
   }
 });

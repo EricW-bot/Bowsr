@@ -11,7 +11,7 @@ export async function fetchDrivingRoute(
     const response = await fetch(url);
     if (!response.ok) throw new Error('OSRM request failed');
     const data: unknown = await response.json();
-    const routes = (data as { routes?: Array<{ distance: number; duration: number }> }).routes;
+    const routes = (data as { routes?: { distance: number; duration: number }[] }).routes;
     const route = routes?.[0];
     if (!route || !Number.isFinite(route.distance) || !Number.isFinite(route.duration)) {
       throw new Error('OSRM response missing route details');

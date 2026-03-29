@@ -1,6 +1,16 @@
-export const API_KEY = '4ICQizjkv8QmJpSEDoQ7Aq1a2ZwHT3G5';
-export const BASIC_AUTH_HEADER =
-  'Basic NElDUWl6amt2OFFtSnBTRURvUTdBcTFhMlp3SFQzRzU6eVN5Z3JCZnhIV0M2RFRoSQ==';
+const trimEnvValue = (value: string): string => {
+  const t = value.trim();
+  if (t.length >= 2) {
+    const q = t[0];
+    if ((q === '"' || q === "'") && t[t.length - 1] === q) {
+      return t.slice(1, -1);
+    }
+  }
+  return t;
+};
+
+export const API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_NSW_FUEL_API_KEY ?? '');
+export const BASIC_AUTH_HEADER = trimEnvValue(process.env.EXPO_PUBLIC_NSW_FUEL_BASIC_AUTH ?? '');
 
 export const NEARBY_RADIUS_STEPS_KM = [3, 5, 8, 12, 18];
 export const TARGET_NEARBY_STATIONS = 40;

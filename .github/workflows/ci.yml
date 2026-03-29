@@ -1,0 +1,26 @@
+# Example: typecheck with the same env var names you use locally and in EAS/GitHub Environments.
+# Add repository secrets (or Environment secrets) named exactly like the variables below.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    env:
+      # Optional for `tsc` — values can be empty. Set real secrets if a step needs a production build.
+      EXPO_PUBLIC_NSW_FUEL_API_KEY: ${{ secrets.EXPO_PUBLIC_NSW_FUEL_API_KEY }}
+      EXPO_PUBLIC_NSW_FUEL_BASIC_AUTH: ${{ secrets.EXPO_PUBLIC_NSW_FUEL_BASIC_AUTH }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit

@@ -2,6 +2,14 @@ import { API_KEY, BASIC_AUTH_HEADER } from './constants';
 import type { FuelApiData, Price, Station } from './Interface';
 import { normalizeBrands } from './utils';
 
+const ensureFuelCredentials = (): void => {
+  if (!API_KEY || !BASIC_AUTH_HEADER) {
+    throw new Error(
+      'NSW Fuel API credentials are missing. Copy .env.example to .env and set EXPO_PUBLIC_NSW_FUEL_API_KEY and EXPO_PUBLIC_NSW_FUEL_BASIC_AUTH, or define the same variables in CI (see README).'
+    );
+  }
+};
+
 const toStringValue = (value: unknown): string => {
   if (typeof value === 'string') return value;
   if (typeof value === 'number') return String(value);
@@ -121,6 +129,7 @@ export const fetchNearbyFuelData = async (
   radiusKm: number,
   fueltype: string
 ): Promise<FuelApiData | null> => {
+  ensureFuelCredentials();
   const normalizedBrandArray = Array.from(new Set(normalizeBrands(brand)));
   const requestBody: Record<string, unknown> = {
     fueltype,
@@ -156,6 +165,7 @@ export const fetchNearbyFuelData = async (
 };
 
 export const getAccessToken = async (): Promise<string> => {
+  ensureFuelCredentials();
   const url =
     'https://api.onegov.nsw.gov.au/oauth/client_credential/accesstoken?grant_type=client_credentials';
   const response = await fetch(url, {

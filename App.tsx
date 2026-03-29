@@ -22,8 +22,8 @@ const TARGET_NEARBY_STATIONS = 40;
 const MAX_ROUTE_CALCULATIONS = 20;
 const DEFAULT_FUEL_TYPE = 'E10';
 const FUEL_TYPE_OPTIONS = ['E10', 'U91', 'P95', 'P98', 'DL'];
-const BRAND_OPTIONS = ['BP', 'Ampol Foodary', 'Metro Fuel', 'Shell'];
-const AVG_CITY_SPEED_KMH = 45;
+const BRAND_OPTIONS = ['Ampol Foodary', 'Ampol Breeze', 'BP', 'Budget', 'EG Ampol', 'Enhance', 'Metro Fuel', 'Shell', 'Speedway', 'United', '7-Eleven'];
+const AVG_CITY_SPEED_KMH = 50;
 
 type Station = {
   brandid?: string;

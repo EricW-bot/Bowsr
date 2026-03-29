@@ -1,4 +1,4 @@
-# FuelNearMe
+# Bowsr
 
 A small Expo (React Native) app that finds **NSW fuel stations** near you, pulls **live prices** from the NSW Government Fuel Check API, and ranks the best stops by **pump price plus the fuel you burn on the round trip** (using your tank size and L/100 km). It shows the top five options with an estimated **one-way** distance and time (API distance when available, otherwise road routing via OSRM).
 

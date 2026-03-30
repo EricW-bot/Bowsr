@@ -5,7 +5,7 @@ import { normalizeBrands } from './utils';
 const ensureFuelCredentials = (): void => {
   if (!API_KEY || !BASIC_AUTH_HEADER) {
     throw new Error(
-      'NSW Fuel API credentials are missing. Copy .env.example to .env and set EXPO_PUBLIC_NSW_FUEL_API_KEY and EXPO_PUBLIC_NSW_FUEL_BASIC_AUTH, or define the same variables in CI (see README).'
+      'NSW Fuel API credentials are missing. Copy .env.example to .env and set API_KEY and BASIC_AUTH, or define the same variables in CI (see README).'
     );
   }
 };

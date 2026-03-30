@@ -9,8 +9,8 @@ const trimEnvValue = (value: string): string => {
   return t;
 };
 
-export const API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_NSW_FUEL_API_KEY ?? '');
-export const BASIC_AUTH_HEADER = trimEnvValue(process.env.EXPO_PUBLIC_NSW_FUEL_BASIC_AUTH ?? '');
+export const API_KEY = trimEnvValue(process.env.API_KEY ?? '');
+export const BASIC_AUTH_HEADER = trimEnvValue(process.env.BASIC_AUTH ?? '');
 
 export const NEARBY_RADIUS_STEPS_KM = [3, 5, 8, 12, 18];
 export const TARGET_NEARBY_STATIONS = 40;

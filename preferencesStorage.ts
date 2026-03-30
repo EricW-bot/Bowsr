@@ -14,8 +14,8 @@ export type StoredUserPreferences = {
 
 const DEFAULTS: StoredUserPreferences = {
   themeMode: 'light',
-  fuelNeeded: '50',
-  fuelEconomy: '8.0',
+  fuelNeeded: '25',
+  fuelEconomy: '10.0',
   fuelType: DEFAULT_FUEL_TYPE,
   selectedBrands: []
 };

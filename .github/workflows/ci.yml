@@ -13,9 +13,8 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     env:
-      # Optional for `tsc` — values can be empty. Set real secrets if a step needs a production build.
-      API_KEY: ${{ secrets.API_KEY }}
-      BASIC_AUTH: ${{ secrets.BASIC_AUTH }}
+      EXPO_PUBLIC_API_KEY: ${{ secrets.EXPO_PUBLIC_API_KEY }}
+      EXPO_PUBLIC_BASIC_AUTH: ${{ secrets.EXPO_PUBLIC_BASIC_AUTH }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

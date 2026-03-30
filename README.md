@@ -28,8 +28,8 @@ A small Expo (React Native) app that finds **NSW fuel stations** near you, pulls
 
 2. Edit `.env` and set:
 
-   - **`API_KEY`** — Your Fuel Check API key
-   - **`BASIC_AUTH`** — The full `Authorization` value for the OAuth client-credentials request, i.e. `Basic ` followed by the Base64 encoding of `client_id:client_secret` (as returned or documented in your API NSW developer portal)
+   - **`EXPO_PUBLIC_API_KEY`** — Your Fuel Check API key
+   - **`EXPO_PUBLIC_BASIC_AUTH`** — The full `Authorization` value for the OAuth client-credentials request, i.e. `Basic ` followed by the Base64 encoding of `client_id:client_secret` (as returned or documented in your API NSW developer portal)
 
    The `EXPO_PUBLIC_` prefix is required by [Expo environment variables](https://docs.expo.dev/guides/environment-variables/) so values are available in app code. Restart `npx expo start` after changing `.env`.
 
@@ -42,15 +42,15 @@ Use the **same variable names** as in `.env` so local and CI stay aligned.
 
    | Secret name | Typical use |
    |-------------|-------------|
-   | `API_KEY` | API key |
-   | `BASIC_AUTH` | Full `Basic …` header string |
+   | `EXPO_PUBLIC_API_KEY` | API key |
+   | `EXPO_PUBLIC_BASIC_AUTH` | Full `Basic …` header string |
 
 3. In your workflow, expose them to the job (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
 
    ```yaml
    env:
-     API_KEY: ${{ secrets.API_KEY }}
-     BASIC_AUTH: ${{ secrets.BASIC_AUTH }}
+     EXPO_PUBLIC_API_KEY: ${{ secrets.EXPO_PUBLIC_API_KEY }}
+     EXPO_PUBLIC_BASIC_AUTH: ${{ secrets.EXPO_PUBLIC_BASIC_AUTH }}
    ```
 
 ### GitHub “Environments” (optional)
@@ -63,8 +63,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     env:
-      API_KEY: ${{ secrets.API_KEY }}
-      BASIC_AUTH: ${{ secrets.BASIC_AUTH }}
+      EXPO_PUBLIC_API_KEY: ${{ secrets.EXPO_PUBLIC_API_KEY }}
+      EXPO_PUBLIC_BASIC_AUTH: ${{ secrets.EXPO_PUBLIC_BASIC_AUTH }}
 ```
 
 Secrets defined on an Environment override repository secrets when that job uses `environment:`.

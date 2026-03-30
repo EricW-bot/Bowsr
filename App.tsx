@@ -41,8 +41,8 @@ export default function App() {
 
   const [apiData, setApiData] = useState<FuelApiData | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [fuelNeeded, setFuelNeeded] = useState('50');
-  const [fuelEconomy, setFuelEconomy] = useState('8.0');
+  const [fuelNeeded, setFuelNeeded] = useState('25');
+  const [fuelEconomy, setFuelEconomy] = useState('10.0');
   const [fuelType, setFuelType] = useState(DEFAULT_FUEL_TYPE);
   const [appliedFuelType, setAppliedFuelType] = useState(DEFAULT_FUEL_TYPE);
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);

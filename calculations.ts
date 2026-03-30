@@ -44,6 +44,36 @@ export const routeMetricsFromNearbyDistanceKm = (distanceKm: number): RouteMetri
   };
 };
 
+const toRadians = (degrees: number): number => (degrees * Math.PI) / 180;
+
+const estimateRoute = (
+  startLat: number,
+  startLon: number,
+  endLat: number,
+  endLon: number
+): RouteMetrics => {
+  // Haversine straight-line distance, scaled to approximate real roads.
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(endLat - startLat);
+  const dLon = toRadians(endLon - startLon);
+  const lat1 = toRadians(startLat);
+  const lat2 = toRadians(endLat);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const straightLineKm = earthRadiusKm * c;
+
+  const estimatedRoadKm = Math.max(straightLineKm * 1.3, 0.5);
+  const estimatedDurationMin = (estimatedRoadKm / AVG_CITY_SPEED_KMH) * 60;
+
+  return {
+    distanceKm: estimatedRoadKm,
+    durationMin: estimatedDurationMin
+  };
+};
+
 async function resolveRouteMetrics(
   userLat: number,
   userLon: number,
@@ -54,7 +84,10 @@ async function resolveRouteMetrics(
   if (nearbyDistance !== undefined && Number.isFinite(nearbyDistance)) {
     return routeMetricsFromNearbyDistanceKm(nearbyDistance);
   }
-  return fetchDrivingRoute(userLat, userLon, stationLat, stationLon);
+
+  // Use OSRM when possible, but always fall back to a local estimate so the UI doesn't hang.
+  const osrmRoute = await fetchDrivingRoute(userLat, userLon, stationLat, stationLon);
+  return osrmRoute ?? estimateRoute(userLat, userLon, stationLat, stationLon);
 }
 
 export async function computeRankedStations(

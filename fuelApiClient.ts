@@ -43,6 +43,17 @@ const getFormattedUTCDateTime = (): string => {
   return `${day}/${month}/${year} ${strH}:${m}:${s} ${ampm}`;
 };
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const normalizeFuelApiData = (input: unknown): FuelApiData | null => {
   if (!input || typeof input !== 'object') return null;
 
@@ -144,17 +155,21 @@ export const fetchNearbyFuelData = async (
     requestBody.brand = normalizedBrandArray;
   }
 
-  const response = await fetch('https://api.onegov.nsw.gov.au/FuelPriceCheck/v2/fuel/prices/nearby', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json; charset=utf-8',
-      apikey: API_KEY,
-      transactionid: `req-${Date.now()}-${radiusKm}`,
-      requesttimestamp: getFormattedUTCDateTime()
+  const response = await fetchWithTimeout(
+    'https://api.onegov.nsw.gov.au/FuelPriceCheck/v2/fuel/prices/nearby',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=utf-8',
+        apikey: API_KEY,
+        transactionid: `req-${Date.now()}-${radiusKm}`,
+        requesttimestamp: getFormattedUTCDateTime()
+      },
+      body: JSON.stringify(requestBody)
     },
-    body: JSON.stringify(requestBody)
-  });
+    12000
+  );
 
   if (!response.ok) {
     throw new Error(`Nearby API failed with status ${response.status}`);
@@ -168,12 +183,16 @@ export const getAccessToken = async (): Promise<string> => {
   ensureFuelCredentials();
   const url =
     'https://api.onegov.nsw.gov.au/oauth/client_credential/accesstoken?grant_type=client_credentials';
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Authorization: BASIC_AUTH_HEADER
-    }
-  });
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: BASIC_AUTH_HEADER
+      }
+    },
+    10000
+  );
 
   if (!response.ok) {
     throw new Error(`OAuth request failed with status ${response.status}`);

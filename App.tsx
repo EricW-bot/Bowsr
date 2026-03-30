@@ -162,7 +162,11 @@ export default function App() {
           return;
         }
 
-        const location = await Location.getCurrentPositionAsync({});
+        // Avoid an infinite spinner if GPS/permissions are slow or unavailable in TestFlight.
+        const location = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Location timed out')), 15000))
+        ]);
         if (cancelled) return;
         setUserLocation(location);
 

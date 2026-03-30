@@ -204,9 +204,6 @@ export function createThemedStyles(c: Palette) {
       borderWidth: 1,
       borderColor: c.iconButtonBorder
     },
-    iconButtonText: {
-      fontSize: 19
-    },
     centerBox: {
       flex: 1,
       justifyContent: 'center',

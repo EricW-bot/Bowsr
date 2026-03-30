@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
@@ -303,7 +304,11 @@ export default function App() {
                 accessibilityRole="button"
                 accessibilityLabel={themeMode === 'dark' ? 'Use light theme' : 'Use dark theme'}
               >
-                <Text style={styles.iconButtonText}>{themeMode === 'dark' ? '☀️' : '🌙'}</Text>
+                <Ionicons
+                  name={themeMode === 'dark' ? 'sunny-outline' : 'moon-outline'}
+                  size={22}
+                  color={palette.title}
+                />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setShowSettings(true)}
@@ -311,7 +316,7 @@ export default function App() {
                 accessibilityRole="button"
                 accessibilityLabel="Open settings"
               >
-                <Text style={styles.iconButtonText}>⚙️</Text>
+                <Ionicons name="settings-outline" size={22} color={palette.title} />
               </TouchableOpacity>
             </View>
           </View>

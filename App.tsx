@@ -261,7 +261,7 @@ export default function App() {
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.title}>Bowsr</Text>
-              <Text style={styles.subtitle}>Top 5 stops based on price & distance</Text>
+              <Text style={styles.subtitle}>Top 5 stations</Text>
               <View style={styles.headerMetaRow}>
                 <View style={styles.fuelTypeBadge}>
                   <Text style={styles.fuelTypeBadgeText}>{appliedFuelType}</Text>

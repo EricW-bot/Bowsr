@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  StyleSheet,
   Text,
   View,
   ScrollView,
@@ -11,6 +10,7 @@ import {
   TouchableWithoutFeedback
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
 import { computeRankedStations } from './calculations';
 import {
@@ -22,6 +22,8 @@ import {
 } from './constants';
 import { fetchNearbyFuelData, getAccessToken } from './fuelApiClient';
 import type { FuelApiData, RankedStation } from './Interface';
+import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
+import { createThemedStyles, getPalette, type ThemeMode } from './theme';
 import {
   getErrorMessage,
   normalizeBrands,
@@ -30,6 +32,7 @@ import {
 } from './utils';
 
 export default function App() {
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light');
   const [rankedStations, setRankedStations] = useState<RankedStation[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -45,6 +48,9 @@ export default function App() {
   const [appliedBrands, setAppliedBrands] = useState<string[]>([]);
   const isMountedRef = useRef(true);
   const latestRankingRequestIdRef = useRef(0);
+
+  const palette = useMemo(() => getPalette(themeMode), [themeMode]);
+  const styles = useMemo(() => createThemedStyles(palette), [palette]);
 
   useEffect(() => {
     return () => {
@@ -126,26 +132,66 @@ export default function App() {
     [processAndRank]
   );
 
+  const fetchAndRankFuelDataRef = useRef(fetchAndRankFuelData);
+  fetchAndRankFuelDataRef.current = fetchAndRankFuelData;
+
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        let { status } = await Location.requestForegroundPermissionsAsync();
+        const prefs = await loadUserPreferences();
+        if (cancelled) return;
+
+        const fuelTypeNorm = normalizeFuelType(prefs.fuelType);
+        const brandsNorm = normalizeBrands(prefs.selectedBrands);
+
+        setThemeMode(prefs.themeMode);
+        setFuelNeeded(prefs.fuelNeeded);
+        setFuelEconomy(prefs.fuelEconomy);
+        setFuelType(fuelTypeNorm);
+        setAppliedFuelType(fuelTypeNorm);
+        setSelectedBrands(brandsNorm);
+        setAppliedBrands(brandsNorm);
+
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (cancelled) return;
         if (status !== 'granted') {
           setErrorMsg('Permission to access location was denied');
           setLoading(false);
           return;
         }
 
-        let location = await Location.getCurrentPositionAsync({});
+        const location = await Location.getCurrentPositionAsync({});
+        if (cancelled) return;
         setUserLocation(location);
 
-        await fetchAndRankFuelData(location.coords.latitude, location.coords.longitude, '50', '8.0', DEFAULT_FUEL_TYPE, []);
+        await fetchAndRankFuelDataRef.current(
+          location.coords.latitude,
+          location.coords.longitude,
+          prefs.fuelNeeded,
+          prefs.fuelEconomy,
+          fuelTypeNorm,
+          brandsNorm
+        );
       } catch (err) {
-        setErrorMsg(getErrorMessage(err, 'An error occurred while initializing.'));
-        setLoading(false);
+        if (!cancelled) {
+          setErrorMsg(getErrorMessage(err, 'An error occurred while initializing.'));
+          setLoading(false);
+        }
       }
     })();
-  }, [fetchAndRankFuelData]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setThemeMode((current) => {
+      const next: ThemeMode = current === 'light' ? 'dark' : 'light';
+      void saveUserPreferences({ themeMode: next });
+      return next;
+    });
+  }, []);
 
   const handleSaveSettings = () => {
     setShowSettings(false);
@@ -158,6 +204,12 @@ export default function App() {
     const brandsChanged = !sameOrderedStringArray(nextBrands, appliedBrands);
     setFuelType(nextFuelType);
     setSelectedBrands(nextBrands);
+    void saveUserPreferences({
+      fuelNeeded,
+      fuelEconomy,
+      fuelType: nextFuelType,
+      selectedBrands: nextBrands
+    });
     setLoading(true);
 
     if (nextFuelType !== appliedFuelType || brandsChanged) {
@@ -230,6 +282,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
+      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <View style={styles.headerRow}>
@@ -243,9 +296,24 @@ export default function App() {
                 <Text style={styles.metaHint}>Nearby smart radius</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.settingsButton}>
-              <Text style={styles.settingsIcon}>⚙️</Text>
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                onPress={toggleTheme}
+                style={styles.iconButton}
+                accessibilityRole="button"
+                accessibilityLabel={themeMode === 'dark' ? 'Use light theme' : 'Use dark theme'}
+              >
+                <Text style={styles.iconButtonText}>{themeMode === 'dark' ? '☀️' : '🌙'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowSettings(true)}
+                style={styles.iconButton}
+                accessibilityRole="button"
+                accessibilityLabel="Open settings"
+              >
+                <Text style={styles.iconButtonText}>⚙️</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -263,6 +331,7 @@ export default function App() {
                     value={fuelNeeded}
                     onChangeText={setFuelNeeded}
                     placeholder="e.g. 50"
+                    placeholderTextColor={palette.placeholder}
                   />
 
                   <Text style={styles.inputLabel}>Fuel Economy (L/100km)</Text>
@@ -272,6 +341,7 @@ export default function App() {
                     value={fuelEconomy}
                     onChangeText={setFuelEconomy}
                     placeholder="e.g. 8.0"
+                    placeholderTextColor={palette.placeholder}
                   />
 
                   <Text style={styles.inputLabel}>Fuel Type</Text>
@@ -321,7 +391,7 @@ export default function App() {
           </View>
         ) : loading ? (
           <View style={styles.centerBox}>
-            <ActivityIndicator size="large" color="#0066cc" />
+            <ActivityIndicator size="large" color={palette.primaryMuted} />
             <Text style={styles.loadingText}>Calculating optimal routes...</Text>
           </View>
         ) : (
@@ -339,260 +409,3 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#eef2f7'
-  },
-  header: {
-    padding: 20,
-    paddingBottom: 18,
-    backgroundColor: '#fbfdff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#dbe5ef'
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: 0.2
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#475569',
-    marginTop: 6
-  },
-  headerMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10
-  },
-  fuelTypeBadge: {
-    backgroundColor: '#e0edff',
-    borderColor: '#b7d2ff',
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4
-  },
-  fuelTypeBadgeText: {
-    color: '#0b4bb3',
-    fontSize: 12,
-    fontWeight: '700'
-  },
-  metaHint: {
-    marginLeft: 8,
-    fontSize: 12,
-    color: '#64748b'
-  },
-  settingsButton: {
-    width: 42,
-    height: 42,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#e8eef7',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#d1dbea'
-  },
-  settingsIcon: {
-    fontSize: 19
-  },
-  centerBox: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#334155'
-  },
-  errorText: {
-    color: '#b42318',
-    fontSize: 16,
-    textAlign: 'center'
-  },
-  listContainer: {
-    flex: 1,
-    padding: 16,
-    paddingBottom: 10
-  },
-  emptyText: {
-    marginTop: 24,
-    fontSize: 16,
-    color: '#64748b',
-    textAlign: 'center'
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#d9e4f2',
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 7 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 14
-  },
-  rankBadge: {
-    backgroundColor: '#0b67d1',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12
-  },
-  rankText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14
-  },
-  stationName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1e293b',
-    flex: 1
-  },
-  stationInfo: {
-    flex: 1
-  },
-  stationAddress: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#64748b',
-    lineHeight: 18
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: '#edf2f7',
-    paddingTop: 12
-  },
-  statBox: {
-    flex: 1,
-    paddingRight: 8
-  },
-  highlightBox: {
-    alignItems: 'flex-end',
-    paddingRight: 0
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#7b8ba1',
-    marginBottom: 4
-  },
-  statValue: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#243447'
-  },
-  costValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1f7a40'
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.42)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20
-  },
-  modalContent: {
-    backgroundColor: '#fdfefe',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#dce6f3',
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 18,
-    elevation: 5
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    marginBottom: 20,
-    color: '#1e293b',
-    textAlign: 'center'
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#334155',
-    marginBottom: 8
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#c5d4e6',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 20,
-    backgroundColor: '#f8fbff'
-  },
-  fuelTypeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 20
-  },
-  fuelTypeChip: {
-    borderWidth: 1,
-    borderColor: '#c2cfdf',
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    marginBottom: 8,
-    backgroundColor: '#f8fbff'
-  },
-  fuelTypeChipSelected: {
-    borderColor: '#0b67d1',
-    backgroundColor: '#e7f1ff'
-  },
-  fuelTypeChipText: {
-    color: '#516273',
-    fontSize: 13,
-    fontWeight: '600'
-  },
-  fuelTypeChipTextSelected: {
-    color: '#0b67d1'
-  },
-  saveButton: {
-    backgroundColor: '#0b67d1',
-    padding: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#0b67d1',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 3
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800'
-  }
-});

@@ -18,8 +18,7 @@ import {
   BRAND_OPTIONS,
   DEFAULT_FUEL_TYPE,
   FUEL_TYPE_OPTIONS,
-  NEARBY_RADIUS_STEPS_KM,
-  TARGET_NEARBY_STATIONS
+  NEARBY_RADIUS_KM
 } from './constants';
 import { fetchNearbyFuelData, getAccessToken } from './fuelApiClient';
 import type { FuelApiData, RankedStation } from './Interface';
@@ -84,29 +83,17 @@ export default function App() {
 
         const accessToken = await getAccessToken();
 
-        let selectedData: FuelApiData | null = null;
-        for (const radiusKm of NEARBY_RADIUS_STEPS_KM) {
-          const nearbyData = await fetchNearbyFuelData(
-            accessToken,
-            requestBrands,
-            userLat,
-            userLon,
-            radiusKm,
-            requestFuelType
-          );
-
-          if (nearbyData && nearbyData.stations.length > 0 && nearbyData.prices.length > 0) {
-            selectedData = nearbyData;
-          }
-
-          if ((nearbyData?.stations.length || 0) >= TARGET_NEARBY_STATIONS) {
-            selectedData = nearbyData;
-            break;
-          }
-        }
+        const selectedData = await fetchNearbyFuelData(
+          accessToken,
+          requestBrands,
+          userLat,
+          userLon,
+          NEARBY_RADIUS_KM,
+          requestFuelType
+        );
 
         if (!selectedData) {
-          throw new Error('Nearby API returned no usable stations for selected radii.');
+          throw new Error('Nearby API returned no usable stations for the selected radius.');
         }
 
         setAppliedFuelType(requestFuelType);
@@ -279,7 +266,7 @@ export default function App() {
                 <View style={styles.fuelTypeBadge}>
                   <Text style={styles.fuelTypeBadgeText}>{appliedFuelType}</Text>
                 </View>
-                <Text style={styles.metaHint}>Nearby smart radius</Text>
+                <Text style={styles.metaHint}>Nearby {NEARBY_RADIUS_KM}km radius</Text>
               </View>
             </View>
             <View style={styles.headerActions}>

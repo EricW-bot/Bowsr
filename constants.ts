@@ -14,8 +14,8 @@ export const BASIC_AUTH_HEADER = trimEnvValue(
   process.env.EXPO_PUBLIC_BASIC_AUTH ?? ''
 );
 
-export const NEARBY_RADIUS_STEPS_KM = [3, 5, 8, 12, 18];
-export const TARGET_NEARBY_STATIONS = 40;
+// Use a single request to NSW API with a fixed radius for performance.
+export const NEARBY_RADIUS_KM = 15;
 export const MAX_ROUTE_CALCULATIONS = 20;
 export const DEFAULT_FUEL_TYPE = 'E10';
 export const FUEL_TYPE_OPTIONS = ['E10', 'U91', 'P95', 'P98', 'DL'];

@@ -7,7 +7,7 @@ A small Expo (React Native) app that finds **NSW fuel stations** near you, pulls
 1. **Location** — With permission, the app reads your GPS coordinates.
 2. **Fuel data** — It requests OAuth credentials, then calls the **nearby prices** endpoint with expanding search radii until enough stations are returned.
 3. **Ranking** — For each candidate station it estimates **distance and time** (nearby API distance + average speed for duration, or OSRM driving directions when distance is missing). It computes **effective cost**: price per litre × (litres you need + extra fuel burned driving there and back).
-4. **Settings** — You can set litres to buy, economy, fuel grade, and optional brand filters; saving refreshes data when fuel type or brands change, or re-ranks with cached data when only tank/economy change.
+4. **Settings** — You can set litres to buy, economy, fuel grade, and optional brand filters; saving refreshes live station prices and re-ranks with your current trip assumptions.
 
 ## Prerequisites
 

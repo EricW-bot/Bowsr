@@ -25,12 +25,7 @@ import { fetchNearbyFuelData, getAccessToken } from './fuelApiClient';
 import type { FuelApiData, RankedStation } from './Interface';
 import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
 import { createThemedStyles, getPalette, type ThemeMode } from './theme';
-import {
-  getErrorMessage,
-  normalizeBrands,
-  normalizeFuelType,
-  sameOrderedStringArray
-} from './utils';
+import { getErrorMessage, normalizeBrands, normalizeFuelType } from './utils';
 
 export default function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>('light');
@@ -38,15 +33,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
-
-  const [apiData, setApiData] = useState<FuelApiData | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [fuelNeeded, setFuelNeeded] = useState('25');
   const [fuelEconomy, setFuelEconomy] = useState('10.0');
   const [fuelType, setFuelType] = useState(DEFAULT_FUEL_TYPE);
   const [appliedFuelType, setAppliedFuelType] = useState(DEFAULT_FUEL_TYPE);
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-  const [appliedBrands, setAppliedBrands] = useState<string[]>([]);
   const isMountedRef = useRef(true);
   const latestRankingRequestIdRef = useRef(0);
 
@@ -79,7 +71,14 @@ export default function App() {
 
   const fetchAndRankFuelData = useCallback(
     async (userLat: number, userLon: number, needed: string, economy: string, fuelTypeInput: string, brandsInput: string[]) => {
-      try {
+      const LIVE_DATA_TIMEOUT_MS = 180000; // 3 minutes watchdog (prevents "Loading..." forever)
+      const watchdog = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Live data timed out after ${LIVE_DATA_TIMEOUT_MS / 1000}s`));
+        }, LIVE_DATA_TIMEOUT_MS);
+      });
+
+      const doWork = (async () => {
         const requestFuelType = normalizeFuelType(fuelTypeInput);
         const requestBrands = normalizeBrands(brandsInput);
 
@@ -110,10 +109,9 @@ export default function App() {
           throw new Error('Nearby API returned no usable stations for selected radii.');
         }
 
-        setApiData(selectedData);
         setAppliedFuelType(requestFuelType);
-        setAppliedBrands(requestBrands);
         setErrorMsg(null);
+
         const rankedCount = await processAndRank(selectedData, userLat, userLon, needed, economy);
         if (rankedCount === -1) {
           return;
@@ -123,6 +121,10 @@ export default function App() {
           setErrorMsg('No rankable stations were returned for that fuel type/radius. Existing results kept.');
           return;
         }
+      })();
+
+      try {
+        await Promise.race([doWork, watchdog]);
       } catch (err) {
         const liveError = getErrorMessage(err, 'Live data request failed.');
         console.warn(`Live data failed: ${liveError}`);
@@ -152,7 +154,6 @@ export default function App() {
         setFuelType(fuelTypeNorm);
         setAppliedFuelType(fuelTypeNorm);
         setSelectedBrands(brandsNorm);
-        setAppliedBrands(brandsNorm);
 
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (cancelled) return;
@@ -206,7 +207,6 @@ export default function App() {
 
     const nextFuelType = normalizeFuelType(fuelType);
     const nextBrands = normalizeBrands(selectedBrands);
-    const brandsChanged = !sameOrderedStringArray(nextBrands, appliedBrands);
     setFuelType(nextFuelType);
     setSelectedBrands(nextBrands);
     void saveUserPreferences({
@@ -216,33 +216,14 @@ export default function App() {
       selectedBrands: nextBrands
     });
     setLoading(true);
-
-    if (nextFuelType !== appliedFuelType || brandsChanged) {
-      fetchAndRankFuelData(
-        userLocation.coords.latitude,
-        userLocation.coords.longitude,
-        fuelNeeded,
-        fuelEconomy,
-        nextFuelType,
-        nextBrands
-      );
-      return;
-    }
-
-    if (apiData) {
-      setLoading(true);
-      processAndRank(apiData, userLocation.coords.latitude, userLocation.coords.longitude, fuelNeeded, fuelEconomy).then(
-        (rankedCount) => {
-          if (rankedCount === -1) {
-            return;
-          }
-          if (rankedCount === 0) {
-            setLoading(false);
-            setErrorMsg('No rankable stations found for current settings. Previous results are still shown.');
-          }
-        }
-      );
-    }
+    fetchAndRankFuelDataRef.current(
+      userLocation.coords.latitude,
+      userLocation.coords.longitude,
+      fuelNeeded,
+      fuelEconomy,
+      nextFuelType,
+      nextBrands
+    );
   };
 
   const renderItem = ({ item, index }: { item: RankedStation; index: number }) => (

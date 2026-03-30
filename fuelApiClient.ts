@@ -1,6 +1,17 @@
 import { API_KEY, BASIC_AUTH_HEADER } from './constants';
 import type { FuelApiData, Price, Station } from './Interface';
 import { normalizeBrands } from './utils';
+import { fetchWithTimeout } from './network';
+
+const sleep = async (ms: number): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+const isRetryableStatus = (status: number): boolean => {
+  // 408 Request Timeout is commonly transient (edge/CDN/server load).
+  // Also retry rate limits and temporary upstream failures.
+  return status === 408 || status === 429 || status >= 500;
+};
 
 const ensureFuelCredentials = (): void => {
   if (!API_KEY || !BASIC_AUTH_HEADER) {
@@ -42,17 +53,6 @@ const getFormattedUTCDateTime = (): string => {
   const strH = pad(h);
   return `${day}/${month}/${year} ${strH}:${m}:${s} ${ampm}`;
 };
-
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 export const normalizeFuelApiData = (input: unknown): FuelApiData | null => {
   if (!input || typeof input !== 'object') return null;
@@ -141,6 +141,10 @@ export const fetchNearbyFuelData = async (
   fueltype: string
 ): Promise<FuelApiData | null> => {
   ensureFuelCredentials();
+
+  const MAX_RETRIES = 3;
+  const BASE_BACKOFF_MS = 800;
+
   const normalizedBrandArray = Array.from(new Set(normalizeBrands(brand)));
   const requestBody: Record<string, unknown> = {
     fueltype,
@@ -155,53 +159,112 @@ export const fetchNearbyFuelData = async (
     requestBody.brand = normalizedBrandArray;
   }
 
-  const response = await fetchWithTimeout(
-    'https://api.onegov.nsw.gov.au/FuelPriceCheck/v2/fuel/prices/nearby',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json; charset=utf-8',
-        apikey: API_KEY,
-        transactionid: `req-${Date.now()}-${radiusKm}`,
-        requesttimestamp: getFormattedUTCDateTime()
-      },
-      body: JSON.stringify(requestBody)
-    },
-    12000
-  );
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        'https://api.onegov.nsw.gov.au/FuelPriceCheck/v2/fuel/prices/nearby',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=utf-8',
+            apikey: API_KEY,
+            transactionid: `req-${Date.now()}-${radiusKm}-${attempt}`,
+            requesttimestamp: getFormattedUTCDateTime()
+          },
+          body: JSON.stringify(requestBody)
+        },
+        12000
+      );
 
-  if (!response.ok) {
-    throw new Error(`Nearby API failed with status ${response.status}`);
+      if (!response.ok) {
+        if (isRetryableStatus(response.status) && attempt < MAX_RETRIES) {
+          console.warn(
+            `Nearby API retryable failure: status=${response.status} attempt=${attempt} radiusKm=${radiusKm} fuel=${fueltype}`
+          );
+          await sleep(BASE_BACKOFF_MS * attempt);
+          continue;
+        }
+        throw new Error(`Nearby API failed with status ${response.status}`);
+      }
+
+      const payload: unknown = await response.json();
+      return normalizeFuelApiData(payload);
+    } catch (err) {
+      lastError = err;
+      const message = err instanceof Error ? err.message : 'unknown error';
+      const shouldRetry = attempt < MAX_RETRIES;
+      if (shouldRetry) {
+        console.warn(
+          `Nearby API request attempt failed (${message}) attempt=${attempt} radiusKm=${radiusKm} fuel=${fueltype}`
+        );
+        await sleep(BASE_BACKOFF_MS * attempt);
+        continue;
+      }
+      break;
+    }
   }
 
-  const payload: unknown = await response.json();
-  return normalizeFuelApiData(payload);
+  // If we exhausted retries, surface the last error.
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error('Nearby API failed after retries.');
 };
 
 export const getAccessToken = async (): Promise<string> => {
   ensureFuelCredentials();
+
+  const MAX_RETRIES = 3;
+  const BASE_BACKOFF_MS = 700;
+
   const url =
     'https://api.onegov.nsw.gov.au/oauth/client_credential/accesstoken?grant_type=client_credentials';
-  const response = await fetchWithTimeout(
-    url,
-    {
-      method: 'GET',
-      headers: {
-        Authorization: BASIC_AUTH_HEADER
+
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: BASIC_AUTH_HEADER
+          }
+        },
+        10000
+      );
+
+      if (!response.ok) {
+        if (isRetryableStatus(response.status) && attempt < MAX_RETRIES) {
+          console.warn(`OAuth retryable failure: status=${response.status} attempt=${attempt}`);
+          await sleep(BASE_BACKOFF_MS * attempt);
+          continue;
+        }
+        throw new Error(`OAuth request failed with status ${response.status}`);
       }
-    },
-    10000
-  );
 
-  if (!response.ok) {
-    throw new Error(`OAuth request failed with status ${response.status}`);
+      const data: unknown = await response.json();
+      const token = (data as { access_token?: string }).access_token;
+      if (!token) {
+        throw new Error('OAuth response missing access token');
+      }
+      return token;
+    } catch (err) {
+      lastError = err;
+      const message = err instanceof Error ? err.message : 'unknown error';
+      if (attempt < MAX_RETRIES) {
+        console.warn(`OAuth request attempt failed (${message}) attempt=${attempt}`);
+        await sleep(BASE_BACKOFF_MS * attempt);
+        continue;
+      }
+      break;
+    }
   }
 
-  const data: unknown = await response.json();
-  const token = (data as { access_token?: string }).access_token;
-  if (!token) {
-    throw new Error('OAuth response missing access token');
+  if (lastError instanceof Error) {
+    throw lastError;
   }
-  return token;
+  throw new Error('OAuth request failed after retries.');
 };

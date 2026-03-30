@@ -2,8 +2,6 @@ import { StyleSheet } from 'react-native';
 
 export type ThemeMode = 'light' | 'dark';
 
-export const THEME_STORAGE_KEY = 'fuelnearme.theme';
-
 type Palette = {
   bg: string;
   headerBg: string;

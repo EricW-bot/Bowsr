@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BRAND_OPTIONS, DEFAULT_FUEL_TYPE, FUEL_TYPE_OPTIONS } from './constants';
-import { THEME_STORAGE_KEY, type ThemeMode } from './theme';
+import { type ThemeMode } from './theme';
 
 const PREFERENCES_KEY = 'fuelnearme.preferences';
 
@@ -58,13 +58,6 @@ export async function loadUserPreferences(): Promise<StoredUserPreferences> {
 
     const merged = mergeWithDefaults(parsed);
 
-    if (!parsed?.themeMode) {
-      const legacyTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-      if (legacyTheme === 'dark' || legacyTheme === 'light') {
-        merged.themeMode = legacyTheme;
-      }
-    }
-
     return merged;
   } catch {
     return { ...DEFAULTS };
@@ -83,5 +76,4 @@ export async function saveUserPreferences(partial: Partial<StoredUserPreferences
     selectedBrands: partial.selectedBrands !== undefined ? coerceBrands(partial.selectedBrands) : current.selectedBrands
   };
   await AsyncStorage.setItem(PREFERENCES_KEY, JSON.stringify(next));
-  await AsyncStorage.removeItem(THEME_STORAGE_KEY);
 }

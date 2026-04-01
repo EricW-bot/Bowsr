@@ -151,7 +151,10 @@ export function createThemedStyles(c: Palette) {
     headerRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'flex-start'
+      alignItems: 'stretch'
+    },
+    headerRowCompact: {
+      gap: 12
     },
     headerMain: {
       flex: 1,
@@ -162,7 +165,13 @@ export function createThemedStyles(c: Palette) {
       marginLeft: 4,
       paddingLeft: 10,
       borderLeftWidth: 1,
-      borderLeftColor: c.headerBorder
+      borderLeftColor: c.headerBorder,
+      justifyContent: 'center'
+    },
+    headerActionRailCompact: {
+      marginLeft: 0,
+      paddingLeft: 0,
+      borderLeftWidth: 0
     },
     headerActions: {
       flexDirection: 'row',
@@ -224,8 +233,8 @@ export function createThemedStyles(c: Palette) {
       color: c.metaHint
     },
     iconButton: {
-      width: 42,
-      height: 42,
+      width: 46,
+      height: 46,
       justifyContent: 'center',
       alignItems: 'center',
       backgroundColor: c.iconButtonBg,
@@ -349,19 +358,28 @@ export function createThemedStyles(c: Palette) {
     modalOverlay: {
       flex: 1,
       backgroundColor: c.modalOverlay,
-      justifyContent: 'center',
+      justifyContent: 'flex-end',
       alignItems: 'center',
-      padding: 20
+      padding: 14
+    },
+    modalKeyboardWrap: {
+      flex: 1,
+      width: '100%',
+      alignItems: 'center',
+      justifyContent: 'flex-end'
     },
     modalContent: {
       backgroundColor: c.modalBg,
-      borderRadius: 16,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      borderBottomLeftRadius: 16,
+      borderBottomRightRadius: 16,
       borderWidth: 1,
       borderColor: c.modalBorder,
-      padding: 24,
+      padding: 18,
       width: '100%',
       maxWidth: 400,
-      maxHeight: '88%',
+      maxHeight: '92%',
       shadowColor: c.cardShadow,
       shadowOffset: { width: 0, height: 10 },
       shadowOpacity: 0.2,
@@ -372,7 +390,28 @@ export function createThemedStyles(c: Palette) {
       flexGrow: 0
     },
     modalScrollContent: {
-      paddingBottom: 12
+      paddingBottom: 14,
+      gap: 12
+    },
+    settingsSection: {
+      borderWidth: 1,
+      borderColor: c.modalBorder,
+      borderRadius: 12,
+      padding: 14,
+      backgroundColor: c.inputBg
+    },
+    settingsSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginBottom: 10
+    },
+    settingsSectionTitle: {
+      color: c.title,
+      fontSize: 13,
+      fontWeight: '800',
+      marginBottom: 0,
+      letterSpacing: 0.2
     },
     modalHandle: {
       alignSelf: 'center',
@@ -387,6 +426,10 @@ export function createThemedStyles(c: Palette) {
       alignItems: 'center',
       justifyContent: 'space-between',
       marginBottom: 14
+    },
+    modalTitleWrap: {
+      flex: 1,
+      marginHorizontal: 8
     },
     modalCloseButton: {
       width: 34,
@@ -411,6 +454,11 @@ export function createThemedStyles(c: Palette) {
       color: c.modalTitle,
       textAlign: 'left'
     },
+    modalSubtitle: {
+      marginTop: 2,
+      fontSize: 12,
+      color: c.metaHint
+    },
     inputLabel: {
       fontSize: 14,
       fontWeight: '700',
@@ -423,14 +471,15 @@ export function createThemedStyles(c: Palette) {
       borderRadius: 10,
       padding: 12,
       fontSize: 16,
-      marginBottom: 20,
+      marginBottom: 12,
       backgroundColor: c.inputBg,
       color: c.inputText
     },
     inlineInputsRow: {
       flexDirection: 'row',
+      alignItems: 'flex-start',
       gap: 10,
-      marginBottom: 20
+      marginBottom: 12
     },
     inlineInputCol: {
       flex: 1
@@ -451,20 +500,51 @@ export function createThemedStyles(c: Palette) {
     fuelTypeRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      marginBottom: 20
+      marginBottom: 12
+    },
+    sourceToggleRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginBottom: 12
+    },
+    sourceToggleButton: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+      borderRadius: 10,
+      backgroundColor: c.chipBg,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      justifyContent: 'center'
+    },
+    sourceToggleButtonSelected: {
+      borderColor: c.chipSelectedBorder,
+      backgroundColor: c.chipSelectedBg
+    },
+    sourceToggleText: {
+      color: c.chipText,
+      fontSize: 13,
+      fontWeight: '700'
+    },
+    sourceToggleTextSelected: {
+      color: c.chipTextSelected
     },
     modeCardRow: {
       flexDirection: 'row',
+      alignItems: 'stretch',
       gap: 10,
-      marginBottom: 20
+      marginBottom: 12
     },
     modeCard: {
       flex: 1,
+      minHeight: 100,
       borderWidth: 1,
       borderColor: c.chipBorder,
       borderRadius: 12,
       backgroundColor: c.chipBg,
-      padding: 12
+      padding: 12,
+      justifyContent: 'center'
     },
     modeCardSelected: {
       borderColor: c.chipSelectedBorder,
@@ -508,7 +588,7 @@ export function createThemedStyles(c: Palette) {
       borderColor: c.inputBorder,
       borderRadius: 10,
       backgroundColor: c.inputBg,
-      marginTop: -12,
+      marginTop: 0,
       marginBottom: 12,
       overflow: 'hidden'
     },
@@ -520,7 +600,7 @@ export function createThemedStyles(c: Palette) {
       borderRadius: 999,
       paddingHorizontal: 10,
       paddingVertical: 4,
-      marginTop: -8,
+      marginTop: 0,
       marginBottom: 10
     },
     addressStatusPillOk: {
@@ -556,6 +636,11 @@ export function createThemedStyles(c: Palette) {
       shadowOpacity: 0.25,
       shadowRadius: 10,
       elevation: 3
+    },
+    saveButtonRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8
     },
     saveButtonText: {
       color: '#fff',

@@ -8,7 +8,10 @@ import {
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  Keyboard
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
@@ -58,6 +61,8 @@ export default function App() {
   const [selectedDestinationAddress, setSelectedDestinationAddress] = useState<AddressSuggestion | null>(null);
   const isMountedRef = useRef(true);
   const latestRankingRequestIdRef = useRef(0);
+  const { width } = useWindowDimensions();
+  const isCompactHeader = width < 390;
 
   const palette = useMemo(() => getPalette(themeMode), [themeMode]);
   const styles = useMemo(() => createThemedStyles(palette), [palette]);
@@ -719,7 +724,7 @@ export default function App() {
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <View style={styles.headerRow}>
+          <View style={[styles.headerRow, isCompactHeader && styles.headerRowCompact]}>
             <View style={styles.headerMain}>
               <Text style={styles.title}>Bowsr</Text>
               <Text style={styles.subtitle}>{appMode === 'oneWay' ? 'One-way one-stop planner' : 'Round-trip nearby ranking'}</Text>
@@ -748,7 +753,7 @@ export default function App() {
                 </View>
               </View>
             </View>
-            <View style={styles.headerActionRail}>
+            <View style={[styles.headerActionRail, isCompactHeader && styles.headerActionRailCompact]}>
               <View style={styles.headerActions}>
                 <TouchableOpacity
                   onPress={toggleTheme}
@@ -775,14 +780,23 @@ export default function App() {
           </View>
         </View>
 
-        <Modal visible={showSettings} animationType="fade" transparent={true}>
+        <Modal visible={showSettings} animationType="slide" transparent={true} presentationStyle="overFullScreen">
           <TouchableWithoutFeedback onPress={() => setShowSettings(false)}>
             <View style={styles.modalOverlay}>
               <TouchableWithoutFeedback onPress={() => undefined}>
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+                  keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : Platform.OS === 'android' ? 8 : 0}
+                  style={styles.modalKeyboardWrap}
+                >
                 <View style={styles.modalContent}>
                   <View style={styles.modalHandle} />
                   <View style={styles.modalHeaderRow}>
-                    <Text style={styles.modalTitle}>Vehicle Settings</Text>
+                    <Ionicons name="settings-outline" size={20} color={palette.title} />
+                    <View style={styles.modalTitleWrap}>
+                      <Text style={styles.modalTitle}>Settings</Text>
+                      <Text style={styles.modalSubtitle}>Tune trip mode, addresses, and vehicle preferences.</Text>
+                    </View>
                     <TouchableOpacity
                       onPress={() => setShowSettings(false)}
                       style={styles.modalCloseButton}
@@ -798,7 +812,11 @@ export default function App() {
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
                   >
-
+                  <View style={styles.settingsSection}>
+                  <View style={styles.settingsSectionHeader}>
+                    <Ionicons name="map-outline" size={16} color={palette.title} />
+                    <Text style={styles.settingsSectionTitle}>Trip Mode</Text>
+                  </View>
                   <Text style={styles.inputLabel}>Mode</Text>
                   <View style={styles.modeCardRow}>
                     {(['roundTrip', 'oneWay'] as AppMode[]).map((modeOption) => {
@@ -826,25 +844,30 @@ export default function App() {
                   </View>
 
                   <Text style={styles.inputLabel}>Start Point Source</Text>
-                  <View style={styles.fuelTypeRow}>
+                  <View style={styles.sourceToggleRow}>
                     {[true, false].map((option) => {
                       const selected = useCurrentLocation === option;
                       return (
                         <TouchableOpacity
                           key={option ? 'use-location' : 'use-addresses'}
-                          style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
+                          style={[styles.sourceToggleButton, selected && styles.sourceToggleButtonSelected]}
                           onPress={() => setUseCurrentLocation(option)}
                         >
-                          <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>
+                          <Text style={[styles.sourceToggleText, selected && styles.sourceToggleTextSelected]}>
                             {option ? "Use my location" : 'Use start address'}
                           </Text>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
+                  </View>
 
                   {!useCurrentLocation ? (
-                    <>
+                    <View style={styles.settingsSection}>
+                      <View style={styles.settingsSectionHeader}>
+                        <Ionicons name="pin-outline" size={16} color={palette.title} />
+                        <Text style={styles.settingsSectionTitle}>Start Address</Text>
+                      </View>
                       <Text style={styles.inputLabel}>Start Address</Text>
                       <TextInput
                         style={styles.input}
@@ -900,11 +923,15 @@ export default function App() {
                           ))}
                         </View>
                       ) : null}
-                    </>
+                    </View>
                   ) : null}
 
                   {appMode === 'oneWay' ? (
-                    <>
+                    <View style={styles.settingsSection}>
+                      <View style={styles.settingsSectionHeader}>
+                        <Ionicons name="flag-outline" size={16} color={palette.title} />
+                        <Text style={styles.settingsSectionTitle}>Destination</Text>
+                      </View>
                       <Text style={styles.inputLabel}>Destination Address</Text>
                       <TextInput
                         style={styles.input}
@@ -962,9 +989,14 @@ export default function App() {
                           ))}
                         </View>
                       ) : null}
-                    </>
+                    </View>
                   ) : null}
 
+                  <View style={styles.settingsSection}>
+                  <View style={styles.settingsSectionHeader}>
+                    <Ionicons name="car-sport-outline" size={16} color={palette.title} />
+                    <Text style={styles.settingsSectionTitle}>Vehicle & Fuel</Text>
+                  </View>
                   <View style={styles.inlineInputsRow}>
                     <View style={styles.inlineInputCol}>
                       <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Needed (Litres)</Text>
@@ -1021,14 +1053,19 @@ export default function App() {
                       );
                     })}
                   </View>
+                  </View>
 
                   </ScrollView>
                   <View style={styles.modalFooter}>
                     <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
-                      <Text style={styles.saveButtonText}>Save & Recalculate</Text>
+                      <View style={styles.saveButtonRow}>
+                        <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                        <Text style={styles.saveButtonText}>Save & Recalculate</Text>
+                      </View>
                     </TouchableOpacity>
                   </View>
                 </View>
+                </KeyboardAvoidingView>
               </TouchableWithoutFeedback>
             </View>
           </TouchableWithoutFeedback>

@@ -41,6 +41,12 @@ type Palette = {
   chipSelectedBg: string;
   chipText: string;
   chipTextSelected: string;
+  routingLiveBg: string;
+  routingLiveBorder: string;
+  routingLiveText: string;
+  routingEstimatedBg: string;
+  routingEstimatedBorder: string;
+  routingEstimatedText: string;
   primary: string;
   primaryMuted: string;
 };
@@ -84,6 +90,12 @@ const light: Palette = {
   chipSelectedBg: '#e7f1ff',
   chipText: '#516273',
   chipTextSelected: '#0b67d1',
+  routingLiveBg: '#e8f7ee',
+  routingLiveBorder: '#9fd8b5',
+  routingLiveText: '#166534',
+  routingEstimatedBg: '#fff4e5',
+  routingEstimatedBorder: '#ffd08a',
+  routingEstimatedText: '#9a4b00',
   primary: '#0b67d1',
   primaryMuted: '#0066cc'
 };
@@ -127,6 +139,12 @@ const dark: Palette = {
   chipSelectedBg: '#1e3a5f',
   chipText: '#cbd5e1',
   chipTextSelected: '#93c5fd',
+  routingLiveBg: '#123025',
+  routingLiveBorder: '#276749',
+  routingLiveText: '#86efac',
+  routingEstimatedBg: '#3a260b',
+  routingEstimatedBorder: '#7c4a10',
+  routingEstimatedText: '#fbbf24',
   primary: '#3b82f6',
   primaryMuted: '#60a5fa'
 };
@@ -214,6 +232,31 @@ export function createThemedStyles(c: Palette) {
       color: c.chipText,
       fontSize: 12,
       fontWeight: '600'
+    },
+    routingChipLive: {
+      borderColor: c.routingLiveBorder,
+      backgroundColor: c.routingLiveBg
+    },
+    routingChipLiveText: {
+      color: c.routingLiveText
+    },
+    routingChipEstimated: {
+      borderColor: c.routingEstimatedBorder,
+      backgroundColor: c.routingEstimatedBg
+    },
+    routingChipEstimatedText: {
+      color: c.routingEstimatedText
+    },
+    routingChipContent: {
+      flexDirection: 'row',
+      alignItems: 'center'
+    },
+    routingLiveDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: '#22c55e',
+      marginRight: 6
     },
     fuelTypeBadge: {
       backgroundColor: c.fuelBadgeBg,

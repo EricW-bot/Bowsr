@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
+  Animated,
   Text,
   View,
   ScrollView,
@@ -18,6 +19,7 @@ import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
 import { computeRankedStations, computeTripRankedStations } from './calculations';
+import { beginRoutingSession, getRoutingSessionSource } from './routingClient';
 import {
   BRAND_OPTIONS,
   DEFAULT_FUEL_TYPE,
@@ -55,6 +57,7 @@ export default function App() {
   const [destinationSuggestions, setDestinationSuggestions] = useState<AddressSuggestion[]>([]);
   const [searchingStart, setSearchingStart] = useState(false);
   const [searchingDestination, setSearchingDestination] = useState(false);
+  const [routingSource, setRoutingSource] = useState<'live' | 'estimated'>('live');
   const [isStartInputFocused, setIsStartInputFocused] = useState(false);
   const [isDestinationInputFocused, setIsDestinationInputFocused] = useState(false);
   const [selectedStartAddress, setSelectedStartAddress] = useState<AddressSuggestion | null>(null);
@@ -63,6 +66,7 @@ export default function App() {
   const latestRankingRequestIdRef = useRef(0);
   const { width } = useWindowDimensions();
   const isCompactHeader = width < 390;
+  const liveRoutingDotOpacity = useRef(new Animated.Value(1)).current;
 
   const palette = useMemo(() => getPalette(themeMode), [themeMode]);
   const styles = useMemo(() => createThemedStyles(palette), [palette]);
@@ -78,6 +82,34 @@ export default function App() {
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (routingSource !== 'live') {
+      liveRoutingDotOpacity.stopAnimation();
+      liveRoutingDotOpacity.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(liveRoutingDotOpacity, {
+          toValue: 0.25,
+          duration: 700,
+          useNativeDriver: true
+        }),
+        Animated.timing(liveRoutingDotOpacity, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true
+        })
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      liveRoutingDotOpacity.stopAnimation();
+      liveRoutingDotOpacity.setValue(1);
+    };
+  }, [routingSource, liveRoutingDotOpacity]);
 
   const processAndRank = useCallback(
     async (data: FuelApiData, userLat: number, userLon: number, neededStr: string, economyStr: string): Promise<number> => {
@@ -107,6 +139,7 @@ export default function App() {
       });
 
       const doWork = (async () => {
+        beginRoutingSession();
         const requestFuelType = normalizeFuelType(fuelTypeInput);
         const requestBrands = normalizeBrands(brandsInput);
 
@@ -132,6 +165,7 @@ export default function App() {
         if (rankedCount === -1) {
           return;
         }
+        setRoutingSource(getRoutingSessionSource());
         if (rankedCount === 0) {
           setLoading(false);
           setErrorMsg('No rankable stations were returned for that fuel type/radius. Existing results kept.');
@@ -145,7 +179,7 @@ export default function App() {
         const liveError = getErrorMessage(err, 'Live data request failed.');
         console.warn(`Live data failed: ${liveError}`);
         setLoading(false);
-        setErrorMsg(`Live data failed: ${liveError}`);
+        setErrorMsg('Could not refresh live fuel prices right now. Please try again in a moment.');
       }
     },
     [processAndRank]
@@ -265,6 +299,7 @@ export default function App() {
       });
 
       const doWork = (async () => {
+        beginRoutingSession();
         const requestId = ++latestRankingRequestIdRef.current;
         const normalizedFuelType = normalizeFuelType(fuelTypeInput);
         const normalizedBrands = normalizeBrands(brandsInput);
@@ -293,6 +328,7 @@ export default function App() {
 
         setAppliedFuelType(normalizedFuelType);
         setErrorMsg(null);
+        setRoutingSource(getRoutingSessionSource());
 
         if (topStations.length > 0) {
           setRankedStations(topStations);
@@ -301,7 +337,9 @@ export default function App() {
         }
 
         setLoading(false);
-        setErrorMsg('No feasible one-stop stations found for this trip. Try broader brands/fuel type.');
+        setErrorMsg(
+          'No feasible one-stop stations found for this trip. Live routing may be unavailable, so try again shortly or broaden brands/fuel type.'
+        );
       })();
 
       try {
@@ -310,7 +348,7 @@ export default function App() {
         const liveError = getErrorMessage(err, 'Trip mode request failed.');
         console.warn(`Trip mode failed: ${liveError}`);
         setLoading(false);
-        setErrorMsg(`Trip mode failed: ${liveError}`);
+        setErrorMsg('Could not refresh live trip routing right now. Please try again shortly.');
       }
     },
     [fetchTripCandidatePool]
@@ -750,6 +788,26 @@ export default function App() {
                 </View>
                 <View style={styles.summaryChip}>
                   <Text style={styles.summaryChipText}>{fuelEconomy}L/100km</Text>
+                </View>
+                <View
+                  style={[
+                    styles.summaryChip,
+                    routingSource === 'estimated' ? styles.routingChipEstimated : styles.routingChipLive
+                  ]}
+                >
+                  <View style={styles.routingChipContent}>
+                    {routingSource === 'live' ? (
+                      <Animated.View style={[styles.routingLiveDot, { opacity: liveRoutingDotOpacity }]} />
+                    ) : null}
+                    <Text
+                      style={[
+                        styles.summaryChipText,
+                        routingSource === 'estimated' ? styles.routingChipEstimatedText : styles.routingChipLiveText
+                      ]}
+                    >
+                      Routing: {routingSource === 'estimated' ? 'Estimated' : 'Live'}
+                    </Text>
+                  </View>
                 </View>
               </View>
             </View>

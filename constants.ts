@@ -14,12 +14,14 @@ export const BASIC_AUTH_HEADER = trimEnvValue(
   process.env.EXPO_PUBLIC_BASIC_AUTH ?? ''
 );
 export const GOOGLE_MAPS_API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '');
+export const OPENROUTESERVICE_API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_OPENROUTESERVICE_API_KEY ?? '');
 
 // Use a single request to NSW API with a fixed radius for performance.
 export const NEARBY_RADIUS_KM = 15;
 export const MAX_ROUTE_CALCULATIONS = 20;
 export const TRIP_SAMPLE_RADIUS_KM = 20;
-export const MAX_TRIP_ROUTE_CALCULATIONS = 24;
+export const MAX_TRIP_ROUTE_CALCULATIONS = 16;
+export const MAX_DISPLAY_RESULTS = 5;
 export const TRIP_CORRIDOR_KM = 18;
 export const DEFAULT_FUEL_TYPE = 'E10';
 export const FUEL_TYPE_OPTIONS = ['E10', 'U91', 'P95', 'P98', 'DL'];

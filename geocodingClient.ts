@@ -8,17 +8,7 @@ export type AddressSuggestion = {
   coordinates: Coordinates;
 };
 
-type GoogleAutocompletePrediction = {
-  description?: string;
-  place_id?: string;
-};
-
-type GoogleAutocompleteResponse = {
-  status?: string;
-  predictions?: GoogleAutocompletePrediction[];
-};
-
-type GoogleGeocodeResult = {
+type GeocoderResult = {
   place_id?: string;
   formatted_address?: string;
   geometry?: {
@@ -29,9 +19,21 @@ type GoogleGeocodeResult = {
   };
 };
 
+type GoogleAutocompletePrediction = {
+  description?: string;
+  place_id?: string;
+};
+
+type GoogleAutocompleteResponse = {
+  status?: string;
+  error_message?: string;
+  predictions?: GoogleAutocompletePrediction[];
+};
+
 type GoogleGeocodeResponse = {
   status?: string;
-  results?: GoogleGeocodeResult[];
+  error_message?: string;
+  results?: GeocoderResult[];
 };
 
 const ensureGoogleMapsKey = (): void => {
@@ -40,7 +42,7 @@ const ensureGoogleMapsKey = (): void => {
   }
 };
 
-const parseGeocodeResult = (result: GoogleGeocodeResult): AddressSuggestion | null => {
+const parseGeocodeResult = (result: GeocoderResult): AddressSuggestion | null => {
   const lat = result.geometry?.location?.lat;
   const lng = result.geometry?.location?.lng;
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
@@ -80,6 +82,10 @@ async function searchGoogleGeocode(query: string): Promise<AddressSuggestion[]> 
   }
 
   const data = (await response.json()) as GoogleGeocodeResponse;
+  if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+    const errorDetails = data.error_message ? ` (${data.error_message})` : '';
+    throw new Error(`Google geocode status ${data.status}${errorDetails}`);
+  }
   const results = data.results ?? [];
   return results
     .map((result) => parseGeocodeResult(result))
@@ -110,8 +116,12 @@ export async function fetchAddressSuggestions(query: string): Promise<AddressSug
   }
 
   const data = (await response.json()) as GoogleAutocompleteResponse;
+  if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+    const errorDetails = data.error_message ? ` (${data.error_message})` : '';
+    throw new Error(`Google autocomplete status ${data.status}${errorDetails}`);
+  }
   const predictions = data.predictions ?? [];
-  return predictions
+  const parsedPredictions = predictions
     .map((prediction) => {
       const label = (prediction.description ?? '').trim();
       const id = (prediction.place_id ?? label).trim();
@@ -122,8 +132,14 @@ export async function fetchAddressSuggestions(query: string): Promise<AddressSug
         coordinates: { latitude: 0, longitude: 0 }
       } as AddressSuggestion;
     })
-    .filter((item): item is AddressSuggestion => item !== null)
-    .slice(0, 5);
+    .filter((item): item is AddressSuggestion => item !== null);
+
+  if (parsedPredictions.length > 0) {
+    return parsedPredictions.slice(0, 5);
+  }
+
+  // Fallback for environments where Places Autocomplete is unavailable/restricted.
+  return searchGoogleGeocode(trimmed).then((results) => results.slice(0, 5));
 }
 
 export async function resolveAddress(query: string): Promise<AddressSuggestion | null> {

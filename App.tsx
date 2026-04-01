@@ -217,6 +217,31 @@ export default function App() {
         }
       }
 
+      if (stationByCode.size === 0) {
+        // If all sampled calls failed or returned empty, do one broader fallback around start.
+        const fallbackData = await fetchNearbyFuelData(
+          accessToken,
+          normalizedBrands,
+          start.latitude,
+          start.longitude,
+          TRIP_SAMPLE_RADIUS_KM * 2,
+          normalizedFuelType
+        );
+        if (fallbackData) {
+          for (const station of fallbackData.stations) {
+            if (!stationByCode.has(station.code)) {
+              stationByCode.set(station.code, station);
+            }
+          }
+          for (const price of fallbackData.prices) {
+            const current = priceByCode.get(String(price.stationcode));
+            if (!current || price.price < current.price) {
+              priceByCode.set(String(price.stationcode), price);
+            }
+          }
+        }
+      }
+
       return {
         stations: Array.from(stationByCode.values()),
         prices: Array.from(priceByCode.values())
@@ -246,6 +271,9 @@ export default function App() {
           normalizedFuelType,
           normalizedBrands
         );
+        if (tripData.stations.length === 0) {
+          throw new Error('No stations returned for trip sampling. Please retry in a moment.');
+        }
         const topStations = await computeTripRankedStations({
           data: tripData,
           start,
@@ -389,6 +417,24 @@ export default function App() {
         setTripDestination(prefs.tripDestination);
         setTripStartAddress(prefs.tripStartAddress);
         setTripDestinationAddress(prefs.tripDestinationAddress);
+        setSelectedStartAddress(
+          prefs.tripStartAddress.trim().length > 0
+            ? {
+                id: `saved-start-${prefs.tripStartAddress.trim().toLowerCase()}`,
+                label: prefs.tripStartAddress.trim(),
+                coordinates: prefs.tripStart
+              }
+            : null
+        );
+        setSelectedDestinationAddress(
+          prefs.tripDestinationAddress.trim().length > 0
+            ? {
+                id: `saved-dest-${prefs.tripDestinationAddress.trim().toLowerCase()}`,
+                label: prefs.tripDestinationAddress.trim(),
+                coordinates: prefs.tripDestination
+              }
+            : null
+        );
 
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (cancelled) return;
@@ -503,26 +549,45 @@ export default function App() {
       longitude: userLocation.coords.longitude
     };
     let nextTripDestination = tripDestination;
+    const hasResolvedCoords = (candidate: AddressSuggestion | null): boolean => {
+      if (!candidate) return false;
+      const { latitude, longitude } = candidate.coordinates;
+      return Number.isFinite(latitude) && Number.isFinite(longitude) && !(latitude === 0 && longitude === 0);
+    };
+    const ensureResolvedSelection = async (candidate: AddressSuggestion | null): Promise<AddressSuggestion | null> => {
+      if (!candidate) return null;
+      if (hasResolvedCoords(candidate)) {
+        return candidate;
+      }
+      return resolveAddressByPlaceId(candidate.id);
+    };
 
     try {
       if (!useCurrentLocation) {
-        const resolvedStart = selectedStartAddress && selectedStartAddress.label === startAddress ? selectedStartAddress : null;
+        const resolvedStart = await ensureResolvedSelection(
+          selectedStartAddress && selectedStartAddress.label === startAddress ? selectedStartAddress : null
+        );
         if (!resolvedStart) {
-          setErrorMsg('Please fill in a valid Start Address in settings.');
+          setErrorMsg('Please click a Start Address suggestion, then pick a valid result.');
           setLoading(false);
           return;
         }
+        setSelectedStartAddress(resolvedStart);
         nextTripStart = resolvedStart.coordinates;
       }
 
       if (appMode === 'oneWay') {
-        const resolvedDestination =
-          selectedDestinationAddress && selectedDestinationAddress.label === destinationAddress ? selectedDestinationAddress : null;
+        const resolvedDestination = await ensureResolvedSelection(
+          selectedDestinationAddress && selectedDestinationAddress.label === destinationAddress
+            ? selectedDestinationAddress
+            : null
+        );
         if (!resolvedDestination) {
-          setErrorMsg('Please fill in a valid Destination Address in settings.');
+          setErrorMsg('Please click a Destination Address suggestion, then pick a valid result.');
           setLoading(false);
           return;
         }
+        setSelectedDestinationAddress(resolvedDestination);
         nextTripDestination = resolvedDestination.coordinates;
       }
 
@@ -589,11 +654,17 @@ export default function App() {
 
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
-          <Text style={styles.statLabel}>Pump Price</Text>
+          <View style={styles.statLabelRow}>
+            <Ionicons name="pricetag-outline" size={12} color={palette.metaHint} />
+            <Text style={styles.statLabel}>Pump Price</Text>
+          </View>
           <Text style={styles.statValue}>{item.priceCents.toFixed(1)}¢</Text>
         </View>
         <View style={styles.statBox}>
+          <View style={styles.statLabelRow}>
+            <Ionicons name="navigate-outline" size={12} color={palette.metaHint} />
             <Text style={styles.statLabel}>{appMode === 'oneWay' ? 'Trip Route' : 'Route'}</Text>
+          </View>
             <Text style={styles.statValue}>
               {appMode === 'oneWay'
                 ? `${item.tripWithStopKm?.toFixed(1) ?? item.distanceKm.toFixed(1)} km`
@@ -603,7 +674,10 @@ export default function App() {
             </Text>
         </View>
         <View style={[styles.statBox, styles.highlightBox]}>
-          <Text style={styles.statLabel}>Total Net Cost</Text>
+          <View style={styles.statLabelRow}>
+            <Ionicons name="cash-outline" size={12} color={palette.metaHint} />
+            <Text style={styles.statLabel}>Total Net Cost</Text>
+          </View>
           <Text style={styles.costValue}>${item.totalCostDollars.toFixed(2)}</Text>
         </View>
       </View>
@@ -618,47 +692,85 @@ export default function App() {
     });
   };
 
+  const startAddressSelected = !!(selectedStartAddress && selectedStartAddress.label === tripStartAddress.trim());
+  const destinationAddressSelected = !!(
+    selectedDestinationAddress && selectedDestinationAddress.label === tripDestinationAddress.trim()
+  );
+
+  const startStatusText = useCurrentLocation
+    ? 'Using current location'
+    : tripStartAddress.trim().length === 0
+      ? 'Start address required'
+      : startAddressSelected
+        ? 'Start address selected'
+        : 'Select a start suggestion';
+
+  const destinationStatusText =
+    appMode !== 'oneWay'
+      ? null
+      : tripDestinationAddress.trim().length === 0
+        ? 'Destination address required'
+        : destinationAddressSelected
+          ? 'Destination address selected'
+          : 'Select a destination suggestion';
+
   return (
     <SafeAreaProvider>
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <View style={styles.headerRow}>
-            <View>
+            <View style={styles.headerMain}>
               <Text style={styles.title}>Bowsr</Text>
               <Text style={styles.subtitle}>{appMode === 'oneWay' ? 'One-way one-stop planner' : 'Round-trip nearby ranking'}</Text>
               <View style={styles.headerMetaRow}>
                 <View style={styles.fuelTypeBadge}>
                   <Text style={styles.fuelTypeBadgeText}>{appliedFuelType}</Text>
                 </View>
-                <Text style={styles.metaHint}>
-                  {appMode === 'oneWay'
-                    ? `${tripDestinationAddress || 'Set destination address'} (${useCurrentLocation ? 'start: GPS' : 'start: address'})`
-                    : `Nearby ${NEARBY_RADIUS_KM}km radius`}
-                </Text>
+                <View style={styles.summaryChip}>
+                  <Text style={styles.summaryChipText}>{useCurrentLocation ? 'Start: GPS' : 'Start: Address'}</Text>
+                </View>
+                <View style={styles.summaryChip}>
+                  <Text style={styles.summaryChipText}>
+                    {appMode === 'oneWay' ? 'Destination: Address' : `Nearby ${NEARBY_RADIUS_KM}km`}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.summaryRow}>
+                <View style={styles.summaryChip}>
+                  <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
+                </View>
+                <View style={styles.summaryChip}>
+                  <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
+                </View>
+                <View style={styles.summaryChip}>
+                  <Text style={styles.summaryChipText}>{fuelEconomy}L/100km</Text>
+                </View>
               </View>
             </View>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                onPress={toggleTheme}
-                style={styles.iconButton}
-                accessibilityRole="button"
-                accessibilityLabel={themeMode === 'dark' ? 'Use light theme' : 'Use dark theme'}
-              >
-                <Ionicons
-                  name={themeMode === 'dark' ? 'sunny-outline' : 'moon-outline'}
-                  size={22}
-                  color={palette.title}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setShowSettings(true)}
-                style={styles.iconButton}
-                accessibilityRole="button"
-                accessibilityLabel="Open settings"
-              >
-                <Ionicons name="settings-outline" size={22} color={palette.title} />
-              </TouchableOpacity>
+            <View style={styles.headerActionRail}>
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  onPress={toggleTheme}
+                  style={styles.iconButton}
+                  accessibilityRole="button"
+                  accessibilityLabel={themeMode === 'dark' ? 'Use light theme' : 'Use dark theme'}
+                >
+                  <Ionicons
+                    name={themeMode === 'dark' ? 'sunny-outline' : 'moon-outline'}
+                    size={22}
+                    color={palette.title}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowSettings(true)}
+                  style={styles.iconButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open settings"
+                >
+                  <Ionicons name="settings-outline" size={22} color={palette.title} />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
@@ -668,20 +780,45 @@ export default function App() {
             <View style={styles.modalOverlay}>
               <TouchableWithoutFeedback onPress={() => undefined}>
                 <View style={styles.modalContent}>
-                  <Text style={styles.modalTitle}>Vehicle Settings</Text>
+                  <View style={styles.modalHandle} />
+                  <View style={styles.modalHeaderRow}>
+                    <Text style={styles.modalTitle}>Vehicle Settings</Text>
+                    <TouchableOpacity
+                      onPress={() => setShowSettings(false)}
+                      style={styles.modalCloseButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close settings"
+                    >
+                      <Ionicons name="close" size={20} color={palette.modalTitle} />
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView
+                    style={styles.modalScroll}
+                    contentContainerStyle={styles.modalScrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                  >
 
                   <Text style={styles.inputLabel}>Mode</Text>
-                  <View style={styles.fuelTypeRow}>
+                  <View style={styles.modeCardRow}>
                     {(['roundTrip', 'oneWay'] as AppMode[]).map((modeOption) => {
                       const selected = appMode === modeOption;
                       return (
                         <TouchableOpacity
                           key={modeOption}
-                          style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
+                          style={[styles.modeCard, selected && styles.modeCardSelected]}
                           onPress={() => setAppMode(modeOption)}
                         >
-                          <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>
+                          <Ionicons
+                            name={modeOption === 'roundTrip' ? 'repeat-outline' : 'navigate-outline'}
+                            size={18}
+                            color={selected ? palette.chipTextSelected : palette.chipText}
+                          />
+                          <Text style={[styles.modeCardTitle, selected && styles.fuelTypeChipTextSelected]}>
                             {modeOption === 'roundTrip' ? 'Round-trip' : 'One-way'}
+                          </Text>
+                          <Text style={[styles.modeCardHint, selected && styles.fuelTypeChipTextSelected]}>
+                            {modeOption === 'roundTrip' ? 'Nearby station ranking' : 'Route-aware stop planning'}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -726,6 +863,11 @@ export default function App() {
                         placeholderTextColor={palette.placeholder}
                       />
                       {searchingStart ? <Text style={styles.metaHint}>Searching addresses...</Text> : null}
+                      <View style={[styles.addressStatusPill, startAddressSelected && styles.addressStatusPillOk]}>
+                        <Text style={[styles.addressStatusText, startAddressSelected && styles.addressStatusTextOk]}>
+                          {startStatusText}
+                        </Text>
+                      </View>
                       {startSuggestions.length > 0 ? (
                         <View style={styles.suggestionsList}>
                           {startSuggestions.map((suggestion) => (
@@ -781,6 +923,13 @@ export default function App() {
                         placeholderTextColor={palette.placeholder}
                       />
                       {searchingDestination ? <Text style={styles.metaHint}>Searching addresses...</Text> : null}
+                      {destinationStatusText ? (
+                        <View style={[styles.addressStatusPill, destinationAddressSelected && styles.addressStatusPillOk]}>
+                          <Text style={[styles.addressStatusText, destinationAddressSelected && styles.addressStatusTextOk]}>
+                            {destinationStatusText}
+                          </Text>
+                        </View>
+                      ) : null}
                       {destinationSuggestions.length > 0 ? (
                         <View style={styles.suggestionsList}>
                           {destinationSuggestions.map((suggestion) => (
@@ -873,9 +1022,12 @@ export default function App() {
                     })}
                   </View>
 
-                  <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
-                    <Text style={styles.saveButtonText}>Save & Recalculate</Text>
-                  </TouchableOpacity>
+                  </ScrollView>
+                  <View style={styles.modalFooter}>
+                    <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
+                      <Text style={styles.saveButtonText}>Save & Recalculate</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -896,7 +1048,7 @@ export default function App() {
             {rankedStations.length === 0 ? (
               <Text style={styles.emptyText}>No stations available right now. Try recalculating.</Text>
             ) : (
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.resultsListContent}>
                 {rankedStations.map((item, index) => renderItem({ item, index }))}
               </ScrollView>
             )}

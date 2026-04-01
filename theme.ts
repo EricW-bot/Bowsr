@@ -151,7 +151,18 @@ export function createThemedStyles(c: Palette) {
     headerRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'center'
+      alignItems: 'flex-start'
+    },
+    headerMain: {
+      flex: 1,
+      minWidth: 0,
+      paddingRight: 12
+    },
+    headerActionRail: {
+      marginLeft: 4,
+      paddingLeft: 10,
+      borderLeftWidth: 1,
+      borderLeftColor: c.headerBorder
     },
     headerActions: {
       flexDirection: 'row',
@@ -172,7 +183,28 @@ export function createThemedStyles(c: Palette) {
     headerMetaRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
       marginTop: 10
+    },
+    summaryRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 10
+    },
+    summaryChip: {
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+      backgroundColor: c.chipBg,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4
+    },
+    summaryChipText: {
+      color: c.chipText,
+      fontSize: 12,
+      fontWeight: '600'
     },
     fuelTypeBadge: {
       backgroundColor: c.fuelBadgeBg,
@@ -188,7 +220,6 @@ export function createThemedStyles(c: Palette) {
       fontWeight: '700'
     },
     metaHint: {
-      marginLeft: 8,
       fontSize: 12,
       color: c.metaHint
     },
@@ -222,6 +253,9 @@ export function createThemedStyles(c: Palette) {
       flex: 1,
       padding: 16,
       paddingBottom: 10
+    },
+    resultsListContent: {
+      paddingBottom: 6
     },
     emptyText: {
       marginTop: 24,
@@ -283,6 +317,12 @@ export function createThemedStyles(c: Palette) {
       borderTopColor: c.statsRowBorder,
       paddingTop: 12
     },
+    statLabelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginBottom: 4
+    },
     statBox: {
       flex: 1,
       paddingRight: 8
@@ -321,18 +361,55 @@ export function createThemedStyles(c: Palette) {
       padding: 24,
       width: '100%',
       maxWidth: 400,
+      maxHeight: '88%',
       shadowColor: c.cardShadow,
       shadowOffset: { width: 0, height: 10 },
       shadowOpacity: 0.2,
       shadowRadius: 18,
       elevation: 5
     },
+    modalScroll: {
+      flexGrow: 0
+    },
+    modalScrollContent: {
+      paddingBottom: 12
+    },
+    modalHandle: {
+      alignSelf: 'center',
+      width: 44,
+      height: 4,
+      borderRadius: 999,
+      backgroundColor: c.chipBorder,
+      marginBottom: 10
+    },
+    modalHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 14
+    },
+    modalCloseButton: {
+      width: 34,
+      height: 34,
+      borderWidth: 1,
+      borderColor: c.iconButtonBorder,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.iconButtonBg
+    },
+    modalFooter: {
+      borderTopWidth: 1,
+      borderTopColor: c.modalBorder,
+      marginTop: 8,
+      paddingTop: 12
+    },
     modalTitle: {
       fontSize: 20,
       fontWeight: '800',
-      marginBottom: 20,
+      marginBottom: 0,
       color: c.modalTitle,
-      textAlign: 'center'
+      textAlign: 'left'
     },
     inputLabel: {
       fontSize: 14,
@@ -376,6 +453,34 @@ export function createThemedStyles(c: Palette) {
       flexWrap: 'wrap',
       marginBottom: 20
     },
+    modeCardRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginBottom: 20
+    },
+    modeCard: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+      borderRadius: 12,
+      backgroundColor: c.chipBg,
+      padding: 12
+    },
+    modeCardSelected: {
+      borderColor: c.chipSelectedBorder,
+      backgroundColor: c.chipSelectedBg
+    },
+    modeCardTitle: {
+      color: c.chipText,
+      fontSize: 14,
+      fontWeight: '700',
+      marginTop: 6
+    },
+    modeCardHint: {
+      color: c.chipText,
+      fontSize: 12,
+      marginTop: 4
+    },
     fuelTypeChip: {
       borderWidth: 1,
       borderColor: c.chipBorder,
@@ -407,6 +512,29 @@ export function createThemedStyles(c: Palette) {
       marginBottom: 12,
       overflow: 'hidden'
     },
+    addressStatusPill: {
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+      backgroundColor: c.chipBg,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      marginTop: -8,
+      marginBottom: 10
+    },
+    addressStatusPillOk: {
+      borderColor: c.chipSelectedBorder,
+      backgroundColor: c.chipSelectedBg
+    },
+    addressStatusText: {
+      color: c.chipText,
+      fontSize: 12,
+      fontWeight: '600'
+    },
+    addressStatusTextOk: {
+      color: c.chipTextSelected
+    },
     suggestionItem: {
       paddingVertical: 10,
       paddingHorizontal: 12,
@@ -422,7 +550,7 @@ export function createThemedStyles(c: Palette) {
       padding: 14,
       borderRadius: 10,
       alignItems: 'center',
-      marginTop: 10,
+      marginTop: 0,
       shadowColor: c.primary,
       shadowOffset: { width: 0, height: 6 },
       shadowOpacity: 0.25,

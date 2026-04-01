@@ -24,7 +24,7 @@ import {
   TRIP_SAMPLE_RADIUS_KM
 } from './constants';
 import { fetchNearbyFuelData, getAccessToken } from './fuelApiClient';
-import { fetchAddressSuggestions, resolveAddress, type AddressSuggestion } from './geocodingClient';
+import { fetchAddressSuggestions, resolveAddressByPlaceId, type AddressSuggestion } from './geocodingClient';
 import type { AppMode, Coordinates, FuelApiData, RankedStation } from './Interface';
 import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
 import { createThemedStyles, getPalette, type ThemeMode } from './theme';
@@ -54,6 +54,8 @@ export default function App() {
   const [searchingDestination, setSearchingDestination] = useState(false);
   const [isStartInputFocused, setIsStartInputFocused] = useState(false);
   const [isDestinationInputFocused, setIsDestinationInputFocused] = useState(false);
+  const [selectedStartAddress, setSelectedStartAddress] = useState<AddressSuggestion | null>(null);
+  const [selectedDestinationAddress, setSelectedDestinationAddress] = useState<AddressSuggestion | null>(null);
   const isMountedRef = useRef(true);
   const latestRankingRequestIdRef = useRef(0);
 
@@ -295,7 +297,7 @@ export default function App() {
       };
     }
     const q = tripStartAddress.trim();
-    if (q.length < 3) {
+    if (q.length < 2) {
       setStartSuggestions([]);
       return () => {
         cancelled = true;
@@ -335,7 +337,7 @@ export default function App() {
       };
     }
     const q = tripDestinationAddress.trim();
-    if (q.length < 3) {
+    if (q.length < 2) {
       setDestinationSuggestions([]);
       return () => {
         cancelled = true;
@@ -504,9 +506,9 @@ export default function App() {
 
     try {
       if (!useCurrentLocation) {
-        const resolvedStart = await resolveAddress(startAddress);
+        const resolvedStart = selectedStartAddress && selectedStartAddress.label === startAddress ? selectedStartAddress : null;
         if (!resolvedStart) {
-          setErrorMsg('Start address could not be validated. Please pick a suggestion from the dropdown.');
+          setErrorMsg('Please fill in a valid Start Address in settings.');
           setLoading(false);
           return;
         }
@@ -514,9 +516,10 @@ export default function App() {
       }
 
       if (appMode === 'oneWay') {
-        const resolvedDestination = await resolveAddress(destinationAddress);
+        const resolvedDestination =
+          selectedDestinationAddress && selectedDestinationAddress.label === destinationAddress ? selectedDestinationAddress : null;
         if (!resolvedDestination) {
-          setErrorMsg('Destination address could not be validated. Please pick a suggestion from the dropdown.');
+          setErrorMsg('Please fill in a valid Destination Address in settings.');
           setLoading(false);
           return;
         }
@@ -709,7 +712,10 @@ export default function App() {
                       <TextInput
                         style={styles.input}
                         value={tripStartAddress}
-                        onChangeText={setTripStartAddress}
+                        onChangeText={(value) => {
+                          setTripStartAddress(value);
+                          setSelectedStartAddress(null);
+                        }}
                             onFocus={() => setIsStartInputFocused(true)}
                             onBlur={() => {
                               setTimeout(() => {
@@ -727,10 +733,24 @@ export default function App() {
                                   key={`start-${suggestion.id}`}
                               style={styles.suggestionItem}
                               onPress={() => {
-                                setTripStartAddress(suggestion.label);
-                                setStartSuggestions([]);
-                                setIsStartInputFocused(false);
-                                Keyboard.dismiss();
+                                void (async () => {
+                                  // Optimistically apply the selected label so tap always feels responsive.
+                                  setTripStartAddress(suggestion.label);
+                                  setSelectedStartAddress(suggestion);
+                                  try {
+                                    const resolved = await resolveAddressByPlaceId(suggestion.id);
+                                    if (resolved) {
+                                      setTripStartAddress(resolved.label);
+                                      setSelectedStartAddress(resolved);
+                                    }
+                                  } catch {
+                                    // Keep optimistic label; final coordinates are validated on save.
+                                  } finally {
+                                    setStartSuggestions([]);
+                                    setIsStartInputFocused(false);
+                                    Keyboard.dismiss();
+                                  }
+                                })();
                               }}
                             >
                               <Text style={styles.suggestionText}>{suggestion.label}</Text>
@@ -747,7 +767,10 @@ export default function App() {
                       <TextInput
                         style={styles.input}
                         value={tripDestinationAddress}
-                        onChangeText={setTripDestinationAddress}
+                        onChangeText={(value) => {
+                          setTripDestinationAddress(value);
+                          setSelectedDestinationAddress(null);
+                        }}
                         onFocus={() => setIsDestinationInputFocused(true)}
                         onBlur={() => {
                           setTimeout(() => {
@@ -765,10 +788,24 @@ export default function App() {
                               key={`dest-${suggestion.id}`}
                               style={styles.suggestionItem}
                               onPress={() => {
-                                setTripDestinationAddress(suggestion.label);
-                                setDestinationSuggestions([]);
-                                setIsDestinationInputFocused(false);
-                                Keyboard.dismiss();
+                                void (async () => {
+                                  // Optimistically apply the selected label so tap always feels responsive.
+                                  setTripDestinationAddress(suggestion.label);
+                                  setSelectedDestinationAddress(suggestion);
+                                  try {
+                                    const resolved = await resolveAddressByPlaceId(suggestion.id);
+                                    if (resolved) {
+                                      setTripDestinationAddress(resolved.label);
+                                      setSelectedDestinationAddress(resolved);
+                                    }
+                                  } catch {
+                                    // Keep optimistic label; final coordinates are validated on save.
+                                  } finally {
+                                    setDestinationSuggestions([]);
+                                    setIsDestinationInputFocused(false);
+                                    Keyboard.dismiss();
+                                  }
+                                })();
                               }}
                             >
                               <Text style={styles.suggestionText}>{suggestion.label}</Text>

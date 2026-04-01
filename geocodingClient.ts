@@ -36,6 +36,12 @@ type GoogleGeocodeResponse = {
   results?: GeocoderResult[];
 };
 
+type GooglePlaceDetailsResponse = {
+  status?: string;
+  error_message?: string;
+  result?: GeocoderResult;
+};
+
 const ensureGoogleMapsKey = (): void => {
   if (!GOOGLE_MAPS_API_KEY) {
     throw new Error('Google Maps API key missing. Set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY.');
@@ -61,7 +67,7 @@ const parseGeocodeResult = (result: GeocoderResult): AddressSuggestion | null =>
 
 async function searchGoogleGeocode(query: string): Promise<AddressSuggestion[]> {
   const trimmed = query.trim();
-  if (trimmed.length < 3) {
+  if (trimmed.length < 2) {
     return [];
   }
   ensureGoogleMapsKey();
@@ -92,9 +98,39 @@ async function searchGoogleGeocode(query: string): Promise<AddressSuggestion[]> 
     .filter((item): item is AddressSuggestion => item !== null);
 }
 
+export async function resolveAddressByPlaceId(placeId: string): Promise<AddressSuggestion | null> {
+  const trimmedId = placeId.trim();
+  if (!trimmedId) {
+    return null;
+  }
+  ensureGoogleMapsKey();
+
+  const params = new URLSearchParams({
+    place_id: trimmedId,
+    fields: 'formatted_address,geometry,place_id',
+    key: GOOGLE_MAPS_API_KEY
+  });
+  const response = await fetchWithTimeout(
+    `https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`,
+    { method: 'GET' },
+    8000
+  );
+  if (!response.ok) {
+    throw new Error(`Google place details failed with status ${response.status}`);
+  }
+
+  const data = (await response.json()) as GooglePlaceDetailsResponse;
+  if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+    const errorDetails = data.error_message ? ` (${data.error_message})` : '';
+    throw new Error(`Google place details status ${data.status}${errorDetails}`);
+  }
+
+  return data.result ? parseGeocodeResult(data.result) : null;
+}
+
 export async function fetchAddressSuggestions(query: string): Promise<AddressSuggestion[]> {
   const trimmed = query.trim();
-  if (trimmed.length < 3) {
+  if (trimmed.length < 2) {
     return [];
   }
   ensureGoogleMapsKey();
@@ -106,36 +142,40 @@ export async function fetchAddressSuggestions(query: string): Promise<AddressSug
     key: GOOGLE_MAPS_API_KEY
   });
 
-  const response = await fetchWithTimeout(
-    `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`,
-    { method: 'GET' },
-    8000
-  );
-  if (!response.ok) {
-    throw new Error(`Google places autocomplete failed with status ${response.status}`);
-  }
+  try {
+    const response = await fetchWithTimeout(
+      `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`,
+      { method: 'GET' },
+      8000
+    );
+    if (!response.ok) {
+      throw new Error(`Google places autocomplete failed with status ${response.status}`);
+    }
 
-  const data = (await response.json()) as GoogleAutocompleteResponse;
-  if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-    const errorDetails = data.error_message ? ` (${data.error_message})` : '';
-    throw new Error(`Google autocomplete status ${data.status}${errorDetails}`);
-  }
-  const predictions = data.predictions ?? [];
-  const parsedPredictions = predictions
-    .map((prediction) => {
-      const label = (prediction.description ?? '').trim();
-      const id = (prediction.place_id ?? label).trim();
-      if (!id || !label) return null;
-      return {
-        id,
-        label,
-        coordinates: { latitude: 0, longitude: 0 }
-      } as AddressSuggestion;
-    })
-    .filter((item): item is AddressSuggestion => item !== null);
+    const data = (await response.json()) as GoogleAutocompleteResponse;
+    if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+      const errorDetails = data.error_message ? ` (${data.error_message})` : '';
+      throw new Error(`Google autocomplete status ${data.status}${errorDetails}`);
+    }
+    const predictions = data.predictions ?? [];
+    const parsedPredictions = predictions
+      .map((prediction) => {
+        const label = (prediction.description ?? '').trim();
+        const id = (prediction.place_id ?? label).trim();
+        if (!id || !label) return null;
+        return {
+          id,
+          label,
+          coordinates: { latitude: 0, longitude: 0 }
+        } as AddressSuggestion;
+      })
+      .filter((item): item is AddressSuggestion => item !== null);
 
-  if (parsedPredictions.length > 0) {
-    return parsedPredictions.slice(0, 5);
+    if (parsedPredictions.length > 0) {
+      return parsedPredictions.slice(0, 5);
+    }
+  } catch {
+    // Ignore and fall through to geocode fallback.
   }
 
   // Fallback for environments where Places Autocomplete is unavailable/restricted.

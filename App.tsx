@@ -7,27 +7,34 @@ import {
   Modal,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  Keyboard
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
-import { computeRankedStations } from './calculations';
+import { computeRankedStations, computeTripRankedStations } from './calculations';
 import {
   BRAND_OPTIONS,
   DEFAULT_FUEL_TYPE,
+  DEFAULT_TRIP_DESTINATION,
   FUEL_TYPE_OPTIONS,
-  NEARBY_RADIUS_KM
+  NEARBY_RADIUS_KM,
+  TRIP_SAMPLE_RADIUS_KM
 } from './constants';
 import { fetchNearbyFuelData, getAccessToken } from './fuelApiClient';
-import type { FuelApiData, RankedStation } from './Interface';
+import { fetchAddressSuggestions, resolveAddress, type AddressSuggestion } from './geocodingClient';
+import type { AppMode, Coordinates, FuelApiData, RankedStation } from './Interface';
 import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
 import { createThemedStyles, getPalette, type ThemeMode } from './theme';
+import { runTripAlgorithmValidation } from './tripValidation';
 import { getErrorMessage, normalizeBrands, normalizeFuelType } from './utils';
 
 export default function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>('light');
+  const [appMode, setAppMode] = useState<AppMode>('roundTrip');
+  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [rankedStations, setRankedStations] = useState<RankedStation[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -38,11 +45,26 @@ export default function App() {
   const [fuelType, setFuelType] = useState(DEFAULT_FUEL_TYPE);
   const [appliedFuelType, setAppliedFuelType] = useState(DEFAULT_FUEL_TYPE);
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
+  const [tripDestination, setTripDestination] = useState<Coordinates>(DEFAULT_TRIP_DESTINATION);
+  const [tripStartAddress, setTripStartAddress] = useState('');
+  const [tripDestinationAddress, setTripDestinationAddress] = useState('');
+  const [startSuggestions, setStartSuggestions] = useState<AddressSuggestion[]>([]);
+  const [destinationSuggestions, setDestinationSuggestions] = useState<AddressSuggestion[]>([]);
+  const [searchingStart, setSearchingStart] = useState(false);
+  const [searchingDestination, setSearchingDestination] = useState(false);
+  const [isStartInputFocused, setIsStartInputFocused] = useState(false);
+  const [isDestinationInputFocused, setIsDestinationInputFocused] = useState(false);
   const isMountedRef = useRef(true);
   const latestRankingRequestIdRef = useRef(0);
 
   const palette = useMemo(() => getPalette(themeMode), [themeMode]);
   const styles = useMemo(() => createThemedStyles(palette), [palette]);
+
+  useEffect(() => {
+    if (__DEV__) {
+      runTripAlgorithmValidation();
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -122,8 +144,227 @@ export default function App() {
     [processAndRank]
   );
 
+  const midpointBetween = (start: Coordinates, end: Coordinates): Coordinates => ({
+    latitude: (start.latitude + end.latitude) / 2,
+    longitude: (start.longitude + end.longitude) / 2
+  });
+
+  const getTripAddressMissingMessage = useCallback(
+    (startAddress: string, destinationAddress: string, useGpsForStart: boolean): string | null => {
+      const missing: string[] = [];
+      if (!useGpsForStart && startAddress.trim().length === 0) {
+        missing.push('start address');
+      }
+      if (destinationAddress.trim().length === 0) {
+        missing.push('destination address');
+      }
+      if (missing.length === 0) {
+        return null;
+      }
+      return `One-way mode needs ${missing.join(' and ')}. Please set the missing address(es) in Settings.`;
+    },
+    []
+  );
+
+  const getRoundTripStartMissingMessage = useCallback((startAddress: string, useGpsForStart: boolean): string | null => {
+    if (useGpsForStart || startAddress.trim().length > 0) {
+      return null;
+    }
+    return 'Round-trip mode needs a start address when GPS start is off. Please set Start Address in Settings.';
+  }, []);
+
+  const fetchTripCandidatePool = useCallback(
+    async (
+      accessToken: string,
+      start: Coordinates,
+      destination: Coordinates,
+      fuelTypeInput: string,
+      brandsInput: string[]
+    ) => {
+      const normalizedFuelType = normalizeFuelType(fuelTypeInput);
+      const normalizedBrands = normalizeBrands(brandsInput);
+      const samples: Coordinates[] = [start, midpointBetween(start, destination), destination];
+      const responses = await Promise.allSettled(
+        samples.map((sample) =>
+          fetchNearbyFuelData(
+            accessToken,
+            normalizedBrands,
+            sample.latitude,
+            sample.longitude,
+            TRIP_SAMPLE_RADIUS_KM,
+            normalizedFuelType
+          )
+        )
+      );
+
+      const stationByCode = new Map<string, FuelApiData['stations'][number]>();
+      const priceByCode = new Map<string, FuelApiData['prices'][number]>();
+
+      for (const response of responses) {
+        if (response.status !== 'fulfilled' || !response.value) continue;
+        for (const station of response.value.stations) {
+          if (!stationByCode.has(station.code)) {
+            stationByCode.set(station.code, station);
+          }
+        }
+        for (const price of response.value.prices) {
+          const current = priceByCode.get(String(price.stationcode));
+          if (!current || price.price < current.price) {
+            priceByCode.set(String(price.stationcode), price);
+          }
+        }
+      }
+
+      return {
+        stations: Array.from(stationByCode.values()),
+        prices: Array.from(priceByCode.values())
+      } as FuelApiData;
+    },
+    []
+  );
+
+  const fetchAndRankTripData = useCallback(
+    async (start: Coordinates, destination: Coordinates, needed: string, economy: string, fuelTypeInput: string, brandsInput: string[]) => {
+      const LIVE_DATA_TIMEOUT_MS = 180000;
+      const watchdog = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Live data timed out after ${LIVE_DATA_TIMEOUT_MS / 1000}s`));
+        }, LIVE_DATA_TIMEOUT_MS);
+      });
+
+      const doWork = (async () => {
+        const requestId = ++latestRankingRequestIdRef.current;
+        const normalizedFuelType = normalizeFuelType(fuelTypeInput);
+        const normalizedBrands = normalizeBrands(brandsInput);
+        const accessToken = await getAccessToken();
+        const tripData = await fetchTripCandidatePool(
+          accessToken,
+          start,
+          destination,
+          normalizedFuelType,
+          normalizedBrands
+        );
+        const topStations = await computeTripRankedStations({
+          data: tripData,
+          start,
+          destination,
+          neededStr: needed,
+          economyStr: economy
+        });
+
+        if (!isMountedRef.current || requestId !== latestRankingRequestIdRef.current) {
+          return;
+        }
+
+        setAppliedFuelType(normalizedFuelType);
+        setErrorMsg(null);
+
+        if (topStations.length > 0) {
+          setRankedStations(topStations);
+          setLoading(false);
+          return;
+        }
+
+        setLoading(false);
+        setErrorMsg('No feasible one-stop stations found for this trip. Try broader brands/fuel type.');
+      })();
+
+      try {
+        await Promise.race([doWork, watchdog]);
+      } catch (err) {
+        const liveError = getErrorMessage(err, 'Trip mode request failed.');
+        console.warn(`Trip mode failed: ${liveError}`);
+        setLoading(false);
+        setErrorMsg(`Trip mode failed: ${liveError}`);
+      }
+    },
+    [fetchTripCandidatePool]
+  );
+
   const fetchAndRankFuelDataRef = useRef(fetchAndRankFuelData);
   fetchAndRankFuelDataRef.current = fetchAndRankFuelData;
+  const fetchAndRankTripDataRef = useRef(fetchAndRankTripData);
+  fetchAndRankTripDataRef.current = fetchAndRankTripData;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!showSettings || useCurrentLocation || !isStartInputFocused) {
+      setStartSuggestions([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const q = tripStartAddress.trim();
+    if (q.length < 3) {
+      setStartSuggestions([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setSearchingStart(true);
+        const results = await fetchAddressSuggestions(q);
+        if (!cancelled) {
+          setStartSuggestions(results);
+        }
+      } catch {
+        if (!cancelled) {
+          setStartSuggestions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setSearchingStart(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [showSettings, useCurrentLocation, tripStartAddress, isStartInputFocused]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!showSettings || appMode !== 'oneWay' || !isDestinationInputFocused) {
+      setDestinationSuggestions([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const q = tripDestinationAddress.trim();
+    if (q.length < 3) {
+      setDestinationSuggestions([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setSearchingDestination(true);
+        const results = await fetchAddressSuggestions(q);
+        if (!cancelled) {
+          setDestinationSuggestions(results);
+        }
+      } catch {
+        if (!cancelled) {
+          setDestinationSuggestions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setSearchingDestination(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [showSettings, appMode, tripDestinationAddress, isDestinationInputFocused]);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,11 +377,16 @@ export default function App() {
         const brandsNorm = normalizeBrands(prefs.selectedBrands);
 
         setThemeMode(prefs.themeMode);
+        setAppMode(prefs.appMode);
+        setUseCurrentLocation(prefs.useCurrentLocation);
         setFuelNeeded(prefs.fuelNeeded);
         setFuelEconomy(prefs.fuelEconomy);
         setFuelType(fuelTypeNorm);
         setAppliedFuelType(fuelTypeNorm);
         setSelectedBrands(brandsNorm);
+        setTripDestination(prefs.tripDestination);
+        setTripStartAddress(prefs.tripStartAddress);
+        setTripDestinationAddress(prefs.tripDestinationAddress);
 
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (cancelled) return;
@@ -158,14 +404,53 @@ export default function App() {
         if (cancelled) return;
         setUserLocation(location);
 
-        await fetchAndRankFuelDataRef.current(
-          location.coords.latitude,
-          location.coords.longitude,
-          prefs.fuelNeeded,
-          prefs.fuelEconomy,
-          fuelTypeNorm,
-          brandsNorm
-        );
+        if (prefs.appMode === 'oneWay') {
+          const missingMessage = getTripAddressMissingMessage(
+            prefs.tripStartAddress,
+            prefs.tripDestinationAddress,
+            prefs.useCurrentLocation
+          );
+          if (missingMessage) {
+            setErrorMsg(missingMessage);
+            setLoading(false);
+            return;
+          }
+
+          await fetchAndRankTripDataRef.current(
+            {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude
+            },
+            prefs.tripDestination,
+            prefs.fuelNeeded,
+            prefs.fuelEconomy,
+            fuelTypeNorm,
+            brandsNorm
+          );
+        } else {
+          const missingMessage = getRoundTripStartMissingMessage(prefs.tripStartAddress, prefs.useCurrentLocation);
+          if (missingMessage) {
+            setErrorMsg(missingMessage);
+            setLoading(false);
+            return;
+          }
+
+          const roundTripStart = prefs.useCurrentLocation
+            ? {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude
+              }
+            : prefs.tripStart;
+
+          await fetchAndRankFuelDataRef.current(
+            roundTripStart.latitude,
+            roundTripStart.longitude,
+            prefs.fuelNeeded,
+            prefs.fuelEconomy,
+            fuelTypeNorm,
+            brandsNorm
+          );
+        }
       } catch (err) {
         if (!cancelled) {
           setErrorMsg(getErrorMessage(err, 'An error occurred while initializing.'));
@@ -176,7 +461,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [getRoundTripStartMissingMessage, getTripAddressMissingMessage]);
 
   const toggleTheme = useCallback(() => {
     setThemeMode((current) => {
@@ -186,8 +471,7 @@ export default function App() {
     });
   }, []);
 
-  const handleSaveSettings = () => {
-    setShowSettings(false);
+  const handleSaveSettings = async () => {
     if (!userLocation) {
       return;
     }
@@ -196,21 +480,96 @@ export default function App() {
     const nextBrands = normalizeBrands(selectedBrands);
     setFuelType(nextFuelType);
     setSelectedBrands(nextBrands);
-    void saveUserPreferences({
-      fuelNeeded,
-      fuelEconomy,
-      fuelType: nextFuelType,
-      selectedBrands: nextBrands
-    });
-    setLoading(true);
-    fetchAndRankFuelDataRef.current(
-      userLocation.coords.latitude,
-      userLocation.coords.longitude,
-      fuelNeeded,
-      fuelEconomy,
-      nextFuelType,
-      nextBrands
-    );
+
+    const startAddress = tripStartAddress.trim();
+    const destinationAddress = tripDestinationAddress.trim();
+
+    const missingMessage =
+      appMode === 'oneWay'
+        ? getTripAddressMissingMessage(startAddress, destinationAddress, useCurrentLocation)
+        : getRoundTripStartMissingMessage(startAddress, useCurrentLocation);
+    if (missingMessage) {
+      setErrorMsg(missingMessage);
+      setLoading(false);
+    } else {
+      setErrorMsg(null);
+      setLoading(true);
+    }
+
+    let nextTripStart = {
+      latitude: userLocation.coords.latitude,
+      longitude: userLocation.coords.longitude
+    };
+    let nextTripDestination = tripDestination;
+
+    try {
+      if (!useCurrentLocation) {
+        const resolvedStart = await resolveAddress(startAddress);
+        if (!resolvedStart) {
+          setErrorMsg('Start address could not be validated. Please pick a suggestion from the dropdown.');
+          setLoading(false);
+          return;
+        }
+        nextTripStart = resolvedStart.coordinates;
+      }
+
+      if (appMode === 'oneWay') {
+        const resolvedDestination = await resolveAddress(destinationAddress);
+        if (!resolvedDestination) {
+          setErrorMsg('Destination address could not be validated. Please pick a suggestion from the dropdown.');
+          setLoading(false);
+          return;
+        }
+        nextTripDestination = resolvedDestination.coordinates;
+      }
+
+      await saveUserPreferences({
+        appMode,
+        useCurrentLocation,
+        fuelNeeded,
+        fuelEconomy,
+        fuelType: nextFuelType,
+        selectedBrands: nextBrands,
+        tripDestination: nextTripDestination,
+        tripStartAddress: startAddress,
+        tripDestinationAddress: destinationAddress,
+        tripStart: nextTripStart
+      });
+      setTripDestination(nextTripDestination);
+    } catch (err) {
+      setErrorMsg(getErrorMessage(err, 'Address validation failed. Please try again.'));
+      setLoading(false);
+      return;
+    }
+    setShowSettings(false);
+    setIsStartInputFocused(false);
+    setIsDestinationInputFocused(false);
+    setStartSuggestions([]);
+    setDestinationSuggestions([]);
+
+    if (missingMessage) {
+      return;
+    }
+
+    if (appMode === 'oneWay') {
+      fetchAndRankTripDataRef.current(
+        nextTripStart,
+        nextTripDestination,
+        fuelNeeded,
+        fuelEconomy,
+        nextFuelType,
+        nextBrands
+      );
+    } else {
+      fetchAndRankFuelDataRef.current(
+        nextTripStart.latitude,
+        nextTripStart.longitude,
+        fuelNeeded,
+        fuelEconomy,
+        nextFuelType,
+        nextBrands
+      );
+    }
   };
 
   const renderItem = ({ item, index }: { item: RankedStation; index: number }) => (
@@ -231,11 +590,14 @@ export default function App() {
           <Text style={styles.statValue}>{item.priceCents.toFixed(1)}¢</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={styles.statLabel}>Route</Text>
-          <Text style={styles.statValue}>
-            {item.distanceKm.toFixed(1)} km
-            {item.durationMin > 0 ? `\n(${Math.round(item.durationMin)} min)` : ''}
-          </Text>
+            <Text style={styles.statLabel}>{appMode === 'oneWay' ? 'Trip Route' : 'Route'}</Text>
+            <Text style={styles.statValue}>
+              {appMode === 'oneWay'
+                ? `${item.tripWithStopKm?.toFixed(1) ?? item.distanceKm.toFixed(1)} km`
+                : `${item.distanceKm.toFixed(1)} km`}
+              {appMode === 'oneWay' && item.detourKm !== undefined ? `\n(+${item.detourKm.toFixed(1)} detour)` : ''}
+              {item.durationMin > 0 ? `\n(${Math.round(item.durationMin)} min)` : ''}
+            </Text>
         </View>
         <View style={[styles.statBox, styles.highlightBox]}>
           <Text style={styles.statLabel}>Total Net Cost</Text>
@@ -261,12 +623,16 @@ export default function App() {
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.title}>Bowsr</Text>
-              <Text style={styles.subtitle}>Top 5 stations</Text>
+              <Text style={styles.subtitle}>{appMode === 'oneWay' ? 'One-way one-stop planner' : 'Round-trip nearby ranking'}</Text>
               <View style={styles.headerMetaRow}>
                 <View style={styles.fuelTypeBadge}>
                   <Text style={styles.fuelTypeBadgeText}>{appliedFuelType}</Text>
                 </View>
-                <Text style={styles.metaHint}>Nearby {NEARBY_RADIUS_KM}km radius</Text>
+                <Text style={styles.metaHint}>
+                  {appMode === 'oneWay'
+                    ? `${tripDestinationAddress || 'Set destination address'} (${useCurrentLocation ? 'start: GPS' : 'start: address'})`
+                    : `Nearby ${NEARBY_RADIUS_KM}km radius`}
+                </Text>
               </View>
             </View>
             <View style={styles.headerActions}>
@@ -301,25 +667,142 @@ export default function App() {
                 <View style={styles.modalContent}>
                   <Text style={styles.modalTitle}>Vehicle Settings</Text>
 
-                  <Text style={styles.inputLabel}>Fuel Needed (Liters)</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    value={fuelNeeded}
-                    onChangeText={setFuelNeeded}
-                    placeholder="e.g. 50"
-                    placeholderTextColor={palette.placeholder}
-                  />
+                  <Text style={styles.inputLabel}>Mode</Text>
+                  <View style={styles.fuelTypeRow}>
+                    {(['roundTrip', 'oneWay'] as AppMode[]).map((modeOption) => {
+                      const selected = appMode === modeOption;
+                      return (
+                        <TouchableOpacity
+                          key={modeOption}
+                          style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
+                          onPress={() => setAppMode(modeOption)}
+                        >
+                          <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>
+                            {modeOption === 'roundTrip' ? 'Round-trip' : 'One-way'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
 
-                  <Text style={styles.inputLabel}>Fuel Economy (L/100km)</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    value={fuelEconomy}
-                    onChangeText={setFuelEconomy}
-                    placeholder="e.g. 8.0"
-                    placeholderTextColor={palette.placeholder}
-                  />
+                  <Text style={styles.inputLabel}>Start Point Source</Text>
+                  <View style={styles.fuelTypeRow}>
+                    {[true, false].map((option) => {
+                      const selected = useCurrentLocation === option;
+                      return (
+                        <TouchableOpacity
+                          key={option ? 'use-location' : 'use-addresses'}
+                          style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
+                          onPress={() => setUseCurrentLocation(option)}
+                        >
+                          <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>
+                            {option ? "Use my location" : 'Use start address'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {!useCurrentLocation ? (
+                    <>
+                      <Text style={styles.inputLabel}>Start Address</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={tripStartAddress}
+                        onChangeText={setTripStartAddress}
+                            onFocus={() => setIsStartInputFocused(true)}
+                            onBlur={() => {
+                              setTimeout(() => {
+                                setIsStartInputFocused(false);
+                              }, 120);
+                            }}
+                        placeholder="Enter start address"
+                        placeholderTextColor={palette.placeholder}
+                      />
+                      {searchingStart ? <Text style={styles.metaHint}>Searching addresses...</Text> : null}
+                      {startSuggestions.length > 0 ? (
+                        <View style={styles.suggestionsList}>
+                          {startSuggestions.map((suggestion) => (
+                            <TouchableOpacity
+                                  key={`start-${suggestion.id}`}
+                              style={styles.suggestionItem}
+                              onPress={() => {
+                                setTripStartAddress(suggestion.label);
+                                setStartSuggestions([]);
+                                setIsStartInputFocused(false);
+                                Keyboard.dismiss();
+                              }}
+                            >
+                              <Text style={styles.suggestionText}>{suggestion.label}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
+                    </>
+                  ) : null}
+
+                  {appMode === 'oneWay' ? (
+                    <>
+                      <Text style={styles.inputLabel}>Destination Address</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={tripDestinationAddress}
+                        onChangeText={setTripDestinationAddress}
+                        onFocus={() => setIsDestinationInputFocused(true)}
+                        onBlur={() => {
+                          setTimeout(() => {
+                            setIsDestinationInputFocused(false);
+                          }, 120);
+                        }}
+                        placeholder="Enter destination address"
+                        placeholderTextColor={palette.placeholder}
+                      />
+                      {searchingDestination ? <Text style={styles.metaHint}>Searching addresses...</Text> : null}
+                      {destinationSuggestions.length > 0 ? (
+                        <View style={styles.suggestionsList}>
+                          {destinationSuggestions.map((suggestion) => (
+                            <TouchableOpacity
+                              key={`dest-${suggestion.id}`}
+                              style={styles.suggestionItem}
+                              onPress={() => {
+                                setTripDestinationAddress(suggestion.label);
+                                setDestinationSuggestions([]);
+                                setIsDestinationInputFocused(false);
+                                Keyboard.dismiss();
+                              }}
+                            >
+                              <Text style={styles.suggestionText}>{suggestion.label}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
+                    </>
+                  ) : null}
+
+                  <View style={styles.inlineInputsRow}>
+                    <View style={styles.inlineInputCol}>
+                      <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Needed (Litres)</Text>
+                      <TextInput
+                        style={styles.inlineInput}
+                        keyboardType="numeric"
+                        value={fuelNeeded}
+                        onChangeText={setFuelNeeded}
+                        placeholder="e.g. 50"
+                        placeholderTextColor={palette.placeholder}
+                      />
+                    </View>
+                    <View style={styles.inlineInputCol}>
+                      <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Economy (L/100km)</Text>
+                      <TextInput
+                        style={styles.inlineInput}
+                        keyboardType="numeric"
+                        value={fuelEconomy}
+                        onChangeText={setFuelEconomy}
+                        placeholder="e.g. 8.0"
+                        placeholderTextColor={palette.placeholder}
+                      />
+                    </View>
+                  </View>
 
                   <Text style={styles.inputLabel}>Fuel Type</Text>
                   <View style={styles.fuelTypeRow}>

@@ -13,10 +13,14 @@ export const API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_API_KEY ?? '');
 export const BASIC_AUTH_HEADER = trimEnvValue(
   process.env.EXPO_PUBLIC_BASIC_AUTH ?? ''
 );
+export const GOOGLE_MAPS_API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '');
 
 // Use a single request to NSW API with a fixed radius for performance.
 export const NEARBY_RADIUS_KM = 15;
 export const MAX_ROUTE_CALCULATIONS = 20;
+export const TRIP_SAMPLE_RADIUS_KM = 20;
+export const MAX_TRIP_ROUTE_CALCULATIONS = 24;
+export const TRIP_CORRIDOR_KM = 18;
 export const DEFAULT_FUEL_TYPE = 'E10';
 export const FUEL_TYPE_OPTIONS = ['E10', 'U91', 'P95', 'P98', 'DL'];
 export const BRAND_OPTIONS = [
@@ -36,3 +40,15 @@ export const AVG_CITY_SPEED_KMH = 50;
 
 /** Max parallel OSRM requests when station distance is not in the API payload. */
 export const ROUTING_CONCURRENCY = 4;
+
+export const DEFAULT_TRIP_START = {
+  latitude: -34.0429,
+  longitude: 150.8156
+};
+
+export const DEFAULT_TRIP_DESTINATION = {
+  latitude: -33.5237,
+  longitude: 151.204
+};
+
+export const DEFAULT_TRIP_DESTINATION_LABEL = 'Mooney Mooney bridge';

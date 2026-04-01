@@ -350,6 +350,27 @@ export function createThemedStyles(c: Palette) {
       backgroundColor: c.inputBg,
       color: c.inputText
     },
+    inlineInputsRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginBottom: 20
+    },
+    inlineInputCol: {
+      flex: 1
+    },
+    inlineInputLabel: {
+      minHeight: 36
+    },
+    inlineInput: {
+      borderWidth: 1,
+      borderColor: c.inputBorder,
+      borderRadius: 10,
+      padding: 12,
+      fontSize: 16,
+      marginBottom: 0,
+      backgroundColor: c.inputBg,
+      color: c.inputText
+    },
     fuelTypeRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -376,6 +397,25 @@ export function createThemedStyles(c: Palette) {
     },
     fuelTypeChipTextSelected: {
       color: c.chipTextSelected
+    },
+    suggestionsList: {
+      borderWidth: 1,
+      borderColor: c.inputBorder,
+      borderRadius: 10,
+      backgroundColor: c.inputBg,
+      marginTop: -12,
+      marginBottom: 12,
+      overflow: 'hidden'
+    },
+    suggestionItem: {
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: c.statsRowBorder
+    },
+    suggestionText: {
+      color: c.inputText,
+      fontSize: 13
     },
     saveButton: {
       backgroundColor: c.primary,

@@ -1,10 +1,12 @@
 import {
   AVG_CITY_SPEED_KMH,
+  MAX_TRIP_ROUTE_CALCULATIONS,
   MAX_ROUTE_CALCULATIONS,
-  // ROUTING_CONCURRENCY intentionally unused after two-stage pruning.
+  ROUTING_CONCURRENCY,
+  TRIP_CORRIDOR_KM
 } from './constants';
-import type { FuelApiData, RankedStation, RouteMetrics } from './Interface';
-import { fetchDrivingRoute } from './routingClient';
+import type { Coordinates, FuelApiData, RankedStation, RouteMetrics, Station } from './Interface';
+import { fetchDrivingRoute, fetchRouteDistanceDuration, fetchRouteVia } from './routingClient';
 
 export const sanitizePositiveNumber = (value: string, fallback: number): number => {
   const parsed = Number.parseFloat(value);
@@ -42,6 +44,39 @@ const haversineStraightLineDistanceKm = (
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return earthRadiusKm * c;
+};
+
+const distancePointToSegmentKm = (
+  point: Coordinates,
+  segmentStart: Coordinates,
+  segmentEnd: Coordinates
+): number => {
+  const meanLat = toRadians((segmentStart.latitude + segmentEnd.latitude) / 2);
+  const kmPerDegLat = 111.32;
+  const kmPerDegLon = 111.32 * Math.cos(meanLat);
+
+  const ax = segmentStart.longitude * kmPerDegLon;
+  const ay = segmentStart.latitude * kmPerDegLat;
+  const bx = segmentEnd.longitude * kmPerDegLon;
+  const by = segmentEnd.latitude * kmPerDegLat;
+  const px = point.longitude * kmPerDegLon;
+  const py = point.latitude * kmPerDegLat;
+
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abLenSq = abx * abx + aby * aby;
+  if (abLenSq <= 0) {
+    const dx = px - ax;
+    const dy = py - ay;
+    return Math.hypot(dx, dy);
+  }
+
+  const apx = px - ax;
+  const apy = py - ay;
+  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
+  const closestX = ax + t * abx;
+  const closestY = ay + t * aby;
+  return Math.hypot(px - closestX, py - closestY);
 };
 
 const estimateRoute = (
@@ -216,4 +251,168 @@ export async function computeRankedStations(
   }
 
   return best;
+}
+
+type TripRankingParams = {
+  data: FuelApiData;
+  start: Coordinates;
+  destination: Coordinates;
+  neededStr: string;
+  economyStr: string;
+  maxCandidates?: number;
+  corridorKm?: number;
+};
+
+type CandidateTripStation = {
+  station: Station;
+  priceCents: number;
+  pricePerLiter: number;
+  costLower: number;
+};
+
+async function runWithConcurrency<T, R>(items: T[], concurrency: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+  if (items.length === 0) return [];
+  const resolvedConcurrency = Math.max(1, Math.min(concurrency, items.length));
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+
+  const runners = Array.from({ length: resolvedConcurrency }, async () => {
+    while (cursor < items.length) {
+      const currentIndex = cursor;
+      cursor += 1;
+      results[currentIndex] = await worker(items[currentIndex]);
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+}
+
+export const computeTripNetCostDollars = (
+  priceCents: number,
+  litersToBuy: number,
+  economyLPer100Km: number,
+  baselineTripKm: number,
+  tripWithStopKm: number
+): number => {
+  const pricePerLiter = priceCents / 100;
+  const litersPerKm = economyLPer100Km / 100;
+  const extraKm = Math.max(tripWithStopKm - baselineTripKm, 0);
+  return pricePerLiter * (litersToBuy + extraKm * litersPerKm);
+};
+
+export const keepFeasibleRankedStations = (stations: (RankedStation | null)[]): RankedStation[] => {
+  return stations.filter((item): item is RankedStation => item !== null);
+};
+
+export async function computeTripRankedStations(params: TripRankingParams): Promise<RankedStation[]> {
+  const {
+    data,
+    start,
+    destination,
+    neededStr,
+    economyStr,
+    maxCandidates = MAX_TRIP_ROUTE_CALCULATIONS,
+    corridorKm = TRIP_CORRIDOR_KM
+  } = params;
+
+  const baselineRoute = await fetchRouteDistanceDuration(start, destination);
+  if (!baselineRoute) {
+    return [];
+  }
+
+  const neededLiters = sanitizePositiveNumber(neededStr, 50);
+  const economyLper100km = sanitizePositiveNumber(economyStr, 8.0);
+  const litersPerKm = economyLper100km / 100;
+  const directLineKm = haversineStraightLineDistanceKm(
+    start.latitude,
+    start.longitude,
+    destination.latitude,
+    destination.longitude
+  );
+
+  const priceByStationCode = new Map(data.prices.map((p) => [String(p.stationcode), p]));
+  const corridorCandidates: CandidateTripStation[] = data.stations
+    .map((station) => {
+      const distToSegmentKm = distancePointToSegmentKm(
+        {
+          latitude: station.location.latitude,
+          longitude: station.location.longitude
+        },
+        start,
+        destination
+      );
+      if (!Number.isFinite(distToSegmentKm) || distToSegmentKm > corridorKm) {
+        return null;
+      }
+
+      const stationPriceInfo = priceByStationCode.get(String(station.code));
+      if (!stationPriceInfo || !Number.isFinite(stationPriceInfo.price)) {
+        return null;
+      }
+
+      const priceCents = stationPriceInfo.price;
+      const pricePerLiter = priceCents / 100;
+      const legToStation = haversineStraightLineDistanceKm(
+        start.latitude,
+        start.longitude,
+        station.location.latitude,
+        station.location.longitude
+      );
+      const legToDestination = haversineStraightLineDistanceKm(
+        station.location.latitude,
+        station.location.longitude,
+        destination.latitude,
+        destination.longitude
+      );
+      const lowerBoundExtraKm = Math.max(legToStation + legToDestination - directLineKm, 0);
+      const lowerCost = pricePerLiter * (neededLiters + lowerBoundExtraKm * litersPerKm);
+
+      return {
+        station,
+        priceCents,
+        pricePerLiter,
+        costLower: lowerCost
+      };
+    })
+    .filter((item): item is CandidateTripStation => item !== null)
+    .sort((a, b) => a.costLower - b.costLower)
+    .slice(0, Math.max(maxCandidates, 1));
+
+  const scored = await runWithConcurrency(corridorCandidates, ROUTING_CONCURRENCY, async (candidate) => {
+    const tripWithStopRoute = await fetchRouteVia(
+      start,
+      {
+        latitude: candidate.station.location.latitude,
+        longitude: candidate.station.location.longitude
+      },
+      destination
+    );
+    if (!tripWithStopRoute) {
+      return null;
+    }
+
+    const detourKm = Math.max(tripWithStopRoute.distanceKm - baselineRoute.distanceKm, 0);
+    const totalCostDollars = computeTripNetCostDollars(
+      candidate.priceCents,
+      neededLiters,
+      economyLper100km,
+      baselineRoute.distanceKm,
+      tripWithStopRoute.distanceKm
+    );
+    return {
+      ...candidate.station,
+      priceCents: candidate.priceCents,
+      distanceKm: tripWithStopRoute.distanceKm,
+      durationMin: tripWithStopRoute.durationMin,
+      totalCostDollars,
+      baselineTripKm: baselineRoute.distanceKm,
+      tripWithStopKm: tripWithStopRoute.distanceKm,
+      detourKm
+    } as RankedStation;
+  });
+
+  return keepFeasibleRankedStations(scored)
+    .sort((a, b) => a.totalCostDollars - b.totalCostDollars)
+    .slice(0, 5);
 }

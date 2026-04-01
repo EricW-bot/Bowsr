@@ -31,9 +31,19 @@ export type RouteMetrics = {
   durationMin: number;
 };
 
+export type Coordinates = {
+  latitude: number;
+  longitude: number;
+};
+
+export type AppMode = 'roundTrip' | 'oneWay';
+
 export type RankedStation = Station & {
   priceCents: number;
   distanceKm: number;
   durationMin: number;
   totalCostDollars: number;
+  baselineTripKm?: number;
+  tripWithStopKm?: number;
+  detourKm?: number;
 };

@@ -73,8 +73,8 @@ export default function App() {
   const [routingSource, setRoutingSource] = useState<'live' | 'estimated'>('live');
   const [mapStation, setMapStation] = useState<RankedStation | null>(null);
   const [expoMapsModule, setExpoMapsModule] = useState<typeof import('expo-maps') | null>(null);
-  const [, setIsStartInputFocused] = useState(false);
-  const [, setIsDestinationInputFocused] = useState(false);
+  const [isStartInputFocused, setIsStartInputFocused] = useState(false);
+  const [isDestinationInputFocused, setIsDestinationInputFocused] = useState(false);
   const [selectedStartAddress, setSelectedStartAddress] = useState<AddressSuggestion | null>(null);
   const [selectedDestinationAddress, setSelectedDestinationAddress] = useState<AddressSuggestion | null>(null);
   const isMountedRef = useRef(true);
@@ -404,8 +404,11 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!showSettings || useCurrentLocation) {
+    const shouldFetchStartSuggestions =
+      showSettings && !useCurrentLocation && (Platform.OS !== 'web' || isStartInputFocused);
+    if (!shouldFetchStartSuggestions) {
       setStartSuggestions([]);
+      setSearchingStart(false);
       return () => {
         cancelled = true;
       };
@@ -440,12 +443,15 @@ export default function App() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [showSettings, useCurrentLocation, tripStartAddress]);
+  }, [showSettings, useCurrentLocation, tripStartAddress, isStartInputFocused]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!showSettings || appMode !== 'oneWay') {
+    const shouldFetchDestinationSuggestions =
+      showSettings && appMode === 'oneWay' && (Platform.OS !== 'web' || isDestinationInputFocused);
+    if (!shouldFetchDestinationSuggestions) {
       setDestinationSuggestions([]);
+      setSearchingDestination(false);
       return () => {
         cancelled = true;
       };
@@ -480,7 +486,7 @@ export default function App() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [showSettings, appMode, tripDestinationAddress]);
+  }, [showSettings, appMode, tripDestinationAddress, isDestinationInputFocused]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1047,7 +1053,7 @@ export default function App() {
                           {startStatusText}
                         </Text>
                       </View>
-                      {startSuggestions.length > 0 ? (
+                      {startSuggestions.length > 0 && (Platform.OS !== 'web' || isStartInputFocused) ? (
                         <View style={styles.suggestionsList}>
                           {startSuggestions.map((suggestion) => (
                             <TouchableOpacity
@@ -1120,7 +1126,7 @@ export default function App() {
                           </Text>
                         </View>
                       ) : null}
-                      {destinationSuggestions.length > 0 ? (
+                      {destinationSuggestions.length > 0 && (Platform.OS !== 'web' || isDestinationInputFocused) ? (
                         <View style={styles.suggestionsList}>
                           {destinationSuggestions.map((suggestion) => (
                             <TouchableOpacity

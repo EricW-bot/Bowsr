@@ -42,4 +42,27 @@ describe('preferences storage integration', () => {
     const loaded = await loadUserPreferences();
     expect(loaded.tripDestinationAddress).toBe('Legacy Destination');
   });
+
+  it('recovers defaults from malformed storage JSON', async () => {
+    storage['fuelnearme.preferences'] = '{invalid-json';
+    const loaded = await loadUserPreferences();
+    expect(loaded.appMode).toBe('roundTrip');
+    expect(loaded.fuelType).toBe('E10');
+  });
+
+  it('coerces invalid shapes/types to safe defaults', async () => {
+    storage['fuelnearme.preferences'] = JSON.stringify({
+      appMode: 'unknown-mode',
+      fuelType: 'BOGUS',
+      selectedBrands: ['Shell', 'NotARealBrand'],
+      tripStart: { latitude: 'bad', longitude: 'bad' },
+      useCurrentLocation: 'yes'
+    });
+    const loaded = await loadUserPreferences();
+    expect(loaded.appMode).toBe('roundTrip');
+    expect(loaded.fuelType).toBe('E10');
+    expect(loaded.selectedBrands).toEqual(['Shell']);
+    expect(loaded.tripStart).toEqual({ latitude: -34.0429, longitude: 150.8156 });
+    expect(loaded.useCurrentLocation).toBe(true);
+  });
 });

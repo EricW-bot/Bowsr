@@ -749,6 +749,23 @@ export function createThemedStyles(c: Palette) {
     mapView: {
       flex: 1
     },
+    mapWebWrap: {
+      flex: 1
+    },
+    mapOpenExternalButton: {
+      position: 'absolute',
+      right: 12,
+      bottom: 12,
+      backgroundColor: c.primary,
+      borderRadius: 999,
+      paddingVertical: 8,
+      paddingHorizontal: 12
+    },
+    mapOpenExternalButtonText: {
+      color: '#fff',
+      fontSize: 12,
+      fontWeight: '700'
+    },
     mapUnavailableBox: {
       flex: 1,
       alignItems: 'center',

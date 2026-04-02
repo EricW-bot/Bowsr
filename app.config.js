@@ -11,7 +11,6 @@ const trim = (value) => {
 
 module.exports = () => {
   const androidGoogleMapsApiKey = trim(process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY);
-  const iosGoogleMapsApiKey = trim(process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY);
 
   return {
     name: 'Bowsr',
@@ -45,9 +44,6 @@ module.exports = () => {
       bundleIdentifier: 'com.pickradmin.bowsr',
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false
-      },
-      config: {
-        googleMapsApiKey: iosGoogleMapsApiKey
       }
     },
     web: {
@@ -59,14 +55,20 @@ module.exports = () => {
       }
     },
     plugins: [
-      'expo-font',
       [
-        'react-native-maps',
+        'expo-maps',
         {
-          androidGoogleMapsApiKey,
-          iosGoogleMapsApiKey
+          requestLocationPermission: true,
+          locationPermission: 'Allow Bowsr to use your location'
         }
-      ]
+      ],
+      [
+        'expo-location',
+        {
+          locationAlwaysAndWhenInUsePermission: 'Allow Bowsr to use your location'
+        }
+      ],
+      'expo-font'
     ]
   };
 };

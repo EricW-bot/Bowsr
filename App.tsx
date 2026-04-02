@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   useColorScheme,
   useWindowDimensions
@@ -37,6 +38,16 @@ import { createThemedStyles, getPalette } from './theme';
 import { runTripAlgorithmValidation } from './tripValidation';
 import { getErrorMessage, normalizeBrands, normalizeFuelType } from './utils';
 
+type ExpoMapMarker = {
+  id: string;
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  };
+  title?: string;
+  snippet?: string;
+};
+
 export default function App() {
   const colorScheme = useColorScheme();
   const themeMode = colorScheme === 'dark' ? 'dark' : 'light';
@@ -61,7 +72,7 @@ export default function App() {
   const [searchingDestination, setSearchingDestination] = useState(false);
   const [routingSource, setRoutingSource] = useState<'live' | 'estimated'>('live');
   const [mapStation, setMapStation] = useState<RankedStation | null>(null);
-  const [nativeMapsModule, setNativeMapsModule] = useState<typeof import('react-native-maps') | null>(null);
+  const [expoMapsModule, setExpoMapsModule] = useState<typeof import('expo-maps') | null>(null);
   const [, setIsStartInputFocused] = useState(false);
   const [, setIsDestinationInputFocused] = useState(false);
   const [selectedStartAddress, setSelectedStartAddress] = useState<AddressSuggestion | null>(null);
@@ -72,8 +83,8 @@ export default function App() {
   const { width } = useWindowDimensions();
   const isCompactHeader = width < 390;
   const liveRoutingDotOpacity = useRef(new Animated.Value(1)).current;
-  const NativeMapView = nativeMapsModule?.default;
-  const NativeMarker = nativeMapsModule?.Marker;
+  const AppleMapsView = expoMapsModule?.AppleMaps?.View;
+  const GoogleMapsView = expoMapsModule?.GoogleMaps?.View;
 
   const palette = useMemo(() => getPalette(themeMode), [themeMode]);
   const styles = useMemo(() => createThemedStyles(palette), [palette]);
@@ -93,15 +104,15 @@ export default function App() {
       return;
     }
     let cancelled = false;
-    void import('react-native-maps')
+    void import('expo-maps')
       .then((mod) => {
         if (!cancelled) {
-          setNativeMapsModule(mod);
+          setExpoMapsModule(mod);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setNativeMapsModule(null);
+          setExpoMapsModule(null);
         }
       });
     return () => {
@@ -784,6 +795,74 @@ export default function App() {
           ? 'Destination address selected'
           : 'Select a destination suggestion';
 
+  const buildWebMapEmbedUrl = (
+    stationLatitude: number,
+    stationLongitude: number,
+    currentLocation?: { latitude: number; longitude: number } | null
+  ): string => {
+    const latitudes = [stationLatitude];
+    const longitudes = [stationLongitude];
+    if (currentLocation) {
+      latitudes.push(currentLocation.latitude);
+      longitudes.push(currentLocation.longitude);
+    }
+
+    const minLat = Math.min(...latitudes);
+    const maxLat = Math.max(...latitudes);
+    const minLon = Math.min(...longitudes);
+    const maxLon = Math.max(...longitudes);
+    const padding = 0.01;
+    const left = minLon - padding;
+    const right = maxLon + padding;
+    const top = maxLat + padding;
+    const bottom = minLat - padding;
+    const stationMarker = `&marker=${stationLatitude}%2C${stationLongitude}`;
+    const userMarker = currentLocation ? `&marker=${currentLocation.latitude}%2C${currentLocation.longitude}` : '';
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik${stationMarker}${userMarker}`;
+  };
+
+  const openExternalMapForStation = useCallback((station: RankedStation) => {
+    const { latitude, longitude } = station.location;
+    const label = encodeURIComponent(station.name);
+    const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}&query_place_id=${label}`;
+    void Linking.openURL(url);
+  }, []);
+
+  const stationMarker = useMemo<ExpoMapMarker | null>(() => {
+    if (!mapStation) {
+      return null;
+    }
+    return {
+      id: 'station',
+      coordinates: {
+        latitude: mapStation.location.latitude,
+        longitude: mapStation.location.longitude
+      },
+      title: mapStation.name,
+      snippet: mapStation.address || 'Fuel station'
+    };
+  }, [mapStation]);
+
+  const userMarker = useMemo<ExpoMapMarker | null>(() => {
+    if (!userLocation) {
+      return null;
+    }
+    return {
+      id: 'user-location',
+      coordinates: {
+        latitude: userLocation.coords.latitude,
+        longitude: userLocation.coords.longitude
+      },
+      title: 'Your Location',
+      snippet: 'Current position'
+    };
+  }, [userLocation]);
+
+  const mapMarkers = useMemo<ExpoMapMarker[]>(
+    () => [stationMarker, userMarker].filter((marker): marker is ExpoMapMarker => marker !== null),
+    [stationMarker, userMarker]
+  );
+
   return (
     <SafeAreaProvider>
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
@@ -1192,35 +1271,51 @@ export default function App() {
                   <Ionicons name="close" size={20} color={palette.modalTitle} />
                 </TouchableOpacity>
               </View>
-              {mapStation && NativeMapView && NativeMarker ? (
-                <NativeMapView
+              {mapStation && Platform.OS === 'web' ? (
+                <View style={styles.mapWebWrap}>
+                  {React.createElement('iframe', {
+                    title: `map-${mapStation.code}`,
+                    src: buildWebMapEmbedUrl(mapStation.location.latitude, mapStation.location.longitude, userLocation?.coords),
+                    style: {
+                      width: '100%',
+                      height: '100%',
+                      border: 0
+                    },
+                    loading: 'lazy'
+                  })}
+                  <TouchableOpacity
+                    style={styles.mapOpenExternalButton}
+                    onPress={() => openExternalMapForStation(mapStation)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open map in Google Maps"
+                  >
+                    <Text style={styles.mapOpenExternalButtonText}>Open in Google Maps</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : mapStation && Platform.OS === 'ios' && AppleMapsView ? (
+                <AppleMapsView
                   style={styles.mapView}
-                  initialRegion={{
-                    latitude: mapStation.location.latitude,
-                    longitude: mapStation.location.longitude,
-                    latitudeDelta: 0.05,
-                    longitudeDelta: 0.05
-                  }}
-                >
-                  <NativeMarker
-                    coordinate={{
+                  cameraPosition={{
+                    coordinates: {
                       latitude: mapStation.location.latitude,
                       longitude: mapStation.location.longitude
-                    }}
-                    title={mapStation.name}
-                    description={mapStation.address || 'Fuel station'}
-                  />
-                  {userLocation ? (
-                    <NativeMarker
-                      coordinate={{
-                        latitude: userLocation.coords.latitude,
-                        longitude: userLocation.coords.longitude
-                      }}
-                      title="Your Location"
-                      pinColor={palette.primary}
-                    />
-                  ) : null}
-                </NativeMapView>
+                    },
+                    zoom: 14
+                  }}
+                  markers={mapMarkers}
+                />
+              ) : mapStation && Platform.OS === 'android' && GoogleMapsView ? (
+                <GoogleMapsView
+                  style={styles.mapView}
+                  cameraPosition={{
+                    coordinates: {
+                      latitude: mapStation.location.latitude,
+                      longitude: mapStation.location.longitude
+                    },
+                    zoom: 14
+                  }}
+                  markers={mapMarkers}
+                />
               ) : (
                 <View style={styles.mapUnavailableBox}>
                   <Ionicons name="map-outline" size={24} color={palette.metaHint} />
@@ -1246,7 +1341,9 @@ export default function App() {
               <Text style={styles.emptyText}>No stations available right now. Try recalculating.</Text>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.resultsListContent}>
-                {rankedStations.map((item, index) => renderItem({ item, index }))}
+                {rankedStations.map((item, index) => (
+                  <React.Fragment key={`${item.code}-${index}`}>{renderItem({ item, index })}</React.Fragment>
+                ))}
               </ScrollView>
             )}
           </View>

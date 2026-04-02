@@ -405,11 +405,19 @@ export function createThemedStyles(c: Palette) {
       alignItems: 'center',
       padding: 14
     },
+    modalBackdrop: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0
+    },
     modalKeyboardWrap: {
       flex: 1,
       width: '100%',
       alignItems: 'center',
-      justifyContent: 'flex-end'
+      justifyContent: 'flex-end',
+      zIndex: 1
     },
     modalContent: {
       backgroundColor: c.modalBg,
@@ -430,9 +438,10 @@ export function createThemedStyles(c: Palette) {
       elevation: 5
     },
     modalScroll: {
-      flexGrow: 0
+      flex: 1
     },
     modalScrollContent: {
+      flexGrow: 1,
       paddingBottom: 14,
       gap: 12
     },

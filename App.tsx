@@ -8,7 +8,6 @@ import {
   Modal,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -68,6 +67,7 @@ export default function App() {
   const [selectedStartAddress, setSelectedStartAddress] = useState<AddressSuggestion | null>(null);
   const [selectedDestinationAddress, setSelectedDestinationAddress] = useState<AddressSuggestion | null>(null);
   const isMountedRef = useRef(true);
+  const isSelectingSuggestionRef = useRef(false);
   const latestRankingRequestIdRef = useRef(0);
   const { width } = useWindowDimensions();
   const isCompactHeader = width < 390;
@@ -849,10 +849,21 @@ export default function App() {
           </View>
         </View>
 
-        <Modal visible={showSettings} animationType="slide" transparent={true} presentationStyle="overFullScreen">
-          <TouchableWithoutFeedback onPress={() => setShowSettings(false)}>
+        <Modal
+          visible={showSettings}
+          animationType="slide"
+          transparent={true}
+          presentationStyle="overFullScreen"
+          onRequestClose={() => setShowSettings(false)}
+        >
             <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback onPress={() => undefined}>
+              <TouchableOpacity
+                style={styles.modalBackdrop}
+                activeOpacity={1}
+                onPress={() => setShowSettings(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close settings"
+              />
                 <KeyboardAvoidingView
                   behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
                   keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : Platform.OS === 'android' ? 8 : 0}
@@ -879,7 +890,9 @@ export default function App() {
                     style={styles.modalScroll}
                     contentContainerStyle={styles.modalScrollContent}
                     showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
+                    keyboardShouldPersistTaps="always"
+                    keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                    nestedScrollEnabled
                   >
                   <View style={styles.settingsSection}>
                   <View style={styles.settingsSectionHeader}>
@@ -945,12 +958,15 @@ export default function App() {
                           setTripStartAddress(value);
                           setSelectedStartAddress(null);
                         }}
-                            onFocus={() => setIsStartInputFocused(true)}
-                            onBlur={() => {
-                              setTimeout(() => {
-                                setIsStartInputFocused(false);
-                              }, 120);
-                            }}
+                        onFocus={() => setIsStartInputFocused(true)}
+                        onBlur={() => {
+                          setTimeout(() => {
+                            if (isSelectingSuggestionRef.current) {
+                              return;
+                            }
+                            setIsStartInputFocused(false);
+                          }, Platform.OS === 'web' ? 220 : 120);
+                        }}
                         placeholder="Enter start address"
                         placeholderTextColor={palette.placeholder}
                       />
@@ -966,6 +982,9 @@ export default function App() {
                             <TouchableOpacity
                                   key={`start-${suggestion.id}`}
                               style={styles.suggestionItem}
+                              onPressIn={() => {
+                                isSelectingSuggestionRef.current = true;
+                              }}
                               onPress={() => {
                                 void (async () => {
                                   // Optimistically apply the selected label so tap always feels responsive.
@@ -980,6 +999,7 @@ export default function App() {
                                   } catch {
                                     // Keep optimistic label; final coordinates are validated on save.
                                   } finally {
+                                    isSelectingSuggestionRef.current = false;
                                     setStartSuggestions([]);
                                     setIsStartInputFocused(false);
                                     Keyboard.dismiss();
@@ -1012,8 +1032,11 @@ export default function App() {
                         onFocus={() => setIsDestinationInputFocused(true)}
                         onBlur={() => {
                           setTimeout(() => {
+                            if (isSelectingSuggestionRef.current) {
+                              return;
+                            }
                             setIsDestinationInputFocused(false);
-                          }, 120);
+                          }, Platform.OS === 'web' ? 220 : 120);
                         }}
                         placeholder="Enter destination address"
                         placeholderTextColor={palette.placeholder}
@@ -1032,6 +1055,9 @@ export default function App() {
                             <TouchableOpacity
                               key={`dest-${suggestion.id}`}
                               style={styles.suggestionItem}
+                              onPressIn={() => {
+                                isSelectingSuggestionRef.current = true;
+                              }}
                               onPress={() => {
                                 void (async () => {
                                   // Optimistically apply the selected label so tap always feels responsive.
@@ -1046,6 +1072,7 @@ export default function App() {
                                   } catch {
                                     // Keep optimistic label; final coordinates are validated on save.
                                   } finally {
+                                    isSelectingSuggestionRef.current = false;
                                     setDestinationSuggestions([]);
                                     setIsDestinationInputFocused(false);
                                     Keyboard.dismiss();
@@ -1135,9 +1162,7 @@ export default function App() {
                   </View>
                 </View>
                 </KeyboardAvoidingView>
-              </TouchableWithoutFeedback>
             </View>
-          </TouchableWithoutFeedback>
         </Modal>
 
         <Modal

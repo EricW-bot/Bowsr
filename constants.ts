@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 const trimEnvValue = (value: string): string => {
   const t = value.trim();
   if (t.length >= 2) {
@@ -13,7 +15,15 @@ export const API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_API_KEY ?? '');
 export const BASIC_AUTH_HEADER = trimEnvValue(
   process.env.EXPO_PUBLIC_BASIC_AUTH ?? ''
 );
-export const GOOGLE_MAPS_API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '');
+const GOOGLE_MAPS_ANDROID_API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY ?? '');
+const GOOGLE_MAPS_IOS_API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY ?? '');
+const GOOGLE_MAPS_LEGACY_API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '');
+export const GOOGLE_MAPS_API_KEY =
+  Platform.OS === 'ios'
+    ? GOOGLE_MAPS_IOS_API_KEY || GOOGLE_MAPS_LEGACY_API_KEY || GOOGLE_MAPS_ANDROID_API_KEY
+    : Platform.OS === 'android'
+      ? GOOGLE_MAPS_ANDROID_API_KEY || GOOGLE_MAPS_LEGACY_API_KEY || GOOGLE_MAPS_IOS_API_KEY
+      : GOOGLE_MAPS_LEGACY_API_KEY || GOOGLE_MAPS_ANDROID_API_KEY || GOOGLE_MAPS_IOS_API_KEY;
 export const OPENROUTESERVICE_API_KEY = trimEnvValue(process.env.EXPO_PUBLIC_OPENROUTESERVICE_API_KEY ?? '');
 
 // Use a single request to NSW API with a fixed radius for performance.

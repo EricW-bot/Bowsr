@@ -44,7 +44,9 @@ type GooglePlaceDetailsResponse = {
 
 const ensureGoogleMapsKey = (): void => {
   if (!GOOGLE_MAPS_API_KEY) {
-    throw new Error('Google Maps API key missing. Set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY.');
+    throw new Error(
+      'Google Maps API key missing. Set EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY and EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY.'
+    );
   }
 };
 

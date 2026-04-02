@@ -689,6 +689,68 @@ export function createThemedStyles(c: Palette) {
       color: '#fff',
       fontSize: 16,
       fontWeight: '800'
+    },
+    mapModalOverlay: {
+      flex: 1,
+      backgroundColor: c.modalOverlay,
+      justifyContent: 'flex-end'
+    },
+    mapModalContent: {
+      backgroundColor: c.modalBg,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      borderWidth: 1,
+      borderColor: c.modalBorder,
+      overflow: 'hidden',
+      height: '78%'
+    },
+    mapModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: c.modalBorder
+    },
+    mapModalTitleWrap: {
+      flex: 1,
+      marginRight: 10
+    },
+    mapModalTitle: {
+      color: c.modalTitle,
+      fontSize: 16,
+      fontWeight: '800'
+    },
+    mapModalSubtitle: {
+      color: c.metaHint,
+      fontSize: 12,
+      marginTop: 2
+    },
+    mapModalCloseButton: {
+      width: 34,
+      height: 34,
+      borderWidth: 1,
+      borderColor: c.iconButtonBorder,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.iconButtonBg
+    },
+    mapView: {
+      flex: 1
+    },
+    mapUnavailableBox: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 20,
+      gap: 10
+    },
+    mapUnavailableText: {
+      color: c.metaHint,
+      fontSize: 14,
+      textAlign: 'center'
     }
   });
 }

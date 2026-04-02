@@ -12,12 +12,14 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  useColorScheme,
   useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
+import * as SystemUI from 'expo-system-ui';
 import { computeRankedStations, computeTripRankedStations } from './calculations';
 import { beginRoutingSession, getRoutingSessionSource } from './routingClient';
 import {
@@ -32,12 +34,13 @@ import { fetchNearbyFuelData, getAccessToken } from './fuelApiClient';
 import { fetchAddressSuggestions, resolveAddressByPlaceId, type AddressSuggestion } from './geocodingClient';
 import type { AppMode, Coordinates, FuelApiData, RankedStation } from './Interface';
 import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
-import { createThemedStyles, getPalette, type ThemeMode } from './theme';
+import { createThemedStyles, getPalette } from './theme';
 import { runTripAlgorithmValidation } from './tripValidation';
 import { getErrorMessage, normalizeBrands, normalizeFuelType } from './utils';
 
 export default function App() {
-  const [themeMode, setThemeMode] = useState<ThemeMode>('light');
+  const colorScheme = useColorScheme();
+  const themeMode = colorScheme === 'dark' ? 'dark' : 'light';
   const [appMode, setAppMode] = useState<AppMode>('roundTrip');
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [rankedStations, setRankedStations] = useState<RankedStation[]>([]);
@@ -58,6 +61,8 @@ export default function App() {
   const [searchingStart, setSearchingStart] = useState(false);
   const [searchingDestination, setSearchingDestination] = useState(false);
   const [routingSource, setRoutingSource] = useState<'live' | 'estimated'>('live');
+  const [mapStation, setMapStation] = useState<RankedStation | null>(null);
+  const [nativeMapsModule, setNativeMapsModule] = useState<typeof import('react-native-maps') | null>(null);
   const [isStartInputFocused, setIsStartInputFocused] = useState(false);
   const [isDestinationInputFocused, setIsDestinationInputFocused] = useState(false);
   const [selectedStartAddress, setSelectedStartAddress] = useState<AddressSuggestion | null>(null);
@@ -67,14 +72,41 @@ export default function App() {
   const { width } = useWindowDimensions();
   const isCompactHeader = width < 390;
   const liveRoutingDotOpacity = useRef(new Animated.Value(1)).current;
+  const NativeMapView = nativeMapsModule?.default;
+  const NativeMarker = nativeMapsModule?.Marker;
 
   const palette = useMemo(() => getPalette(themeMode), [themeMode]);
   const styles = useMemo(() => createThemedStyles(palette), [palette]);
 
   useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(palette.bg);
+  }, [palette.bg]);
+
+  useEffect(() => {
     if (__DEV__) {
       runTripAlgorithmValidation();
     }
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      return;
+    }
+    let cancelled = false;
+    void import('react-native-maps')
+      .then((mod) => {
+        if (!cancelled) {
+          setNativeMapsModule(mod);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNativeMapsModule(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -449,7 +481,6 @@ export default function App() {
         const fuelTypeNorm = normalizeFuelType(prefs.fuelType);
         const brandsNorm = normalizeBrands(prefs.selectedBrands);
 
-        setThemeMode(prefs.themeMode);
         setAppMode(prefs.appMode);
         setUseCurrentLocation(prefs.useCurrentLocation);
         setFuelNeeded(prefs.fuelNeeded);
@@ -553,14 +584,6 @@ export default function App() {
       cancelled = true;
     };
   }, [getRoundTripStartMissingMessage, getTripAddressMissingMessage]);
-
-  const toggleTheme = useCallback(() => {
-    setThemeMode((current) => {
-      const next: ThemeMode = current === 'light' ? 'dark' : 'light';
-      void saveUserPreferences({ themeMode: next });
-      return next;
-    });
-  }, []);
 
   const handleSaveSettings = async () => {
     if (!userLocation) {
@@ -684,7 +707,7 @@ export default function App() {
   };
 
   const renderItem = ({ item, index }: { item: RankedStation; index: number }) => (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={() => setMapStation(item)}>
       <View style={styles.cardHeader}>
         <View style={styles.rankBadge}>
           <Text style={styles.rankText}>#{index + 1}</Text>
@@ -724,7 +747,7 @@ export default function App() {
           <Text style={styles.costValue}>${item.totalCostDollars.toFixed(2)}</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   const toggleBrandSelection = (brand: string) => {
@@ -813,18 +836,6 @@ export default function App() {
             </View>
             <View style={[styles.headerActionRail, isCompactHeader && styles.headerActionRailCompact]}>
               <View style={styles.headerActions}>
-                <TouchableOpacity
-                  onPress={toggleTheme}
-                  style={styles.iconButton}
-                  accessibilityRole="button"
-                  accessibilityLabel={themeMode === 'dark' ? 'Use light theme' : 'Use dark theme'}
-                >
-                  <Ionicons
-                    name={themeMode === 'dark' ? 'sunny-outline' : 'moon-outline'}
-                    size={22}
-                    color={palette.title}
-                  />
-                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setShowSettings(true)}
                   style={styles.iconButton}
@@ -1127,6 +1138,68 @@ export default function App() {
               </TouchableWithoutFeedback>
             </View>
           </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal
+          visible={!!mapStation}
+          animationType="slide"
+          transparent={true}
+          presentationStyle="overFullScreen"
+          onRequestClose={() => setMapStation(null)}
+        >
+          <View style={styles.mapModalOverlay}>
+            <View style={styles.mapModalContent}>
+              <View style={styles.mapModalHeader}>
+                <View style={styles.mapModalTitleWrap}>
+                  <Text style={styles.mapModalTitle}>{mapStation?.name ?? 'Station'}</Text>
+                  <Text style={styles.mapModalSubtitle}>{mapStation?.address || 'Address unavailable'}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setMapStation(null)}
+                  style={styles.mapModalCloseButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close map"
+                >
+                  <Ionicons name="close" size={20} color={palette.modalTitle} />
+                </TouchableOpacity>
+              </View>
+              {mapStation && NativeMapView && NativeMarker ? (
+                <NativeMapView
+                  style={styles.mapView}
+                  initialRegion={{
+                    latitude: mapStation.location.latitude,
+                    longitude: mapStation.location.longitude,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05
+                  }}
+                >
+                  <NativeMarker
+                    coordinate={{
+                      latitude: mapStation.location.latitude,
+                      longitude: mapStation.location.longitude
+                    }}
+                    title={mapStation.name}
+                    description={mapStation.address || 'Fuel station'}
+                  />
+                  {userLocation ? (
+                    <NativeMarker
+                      coordinate={{
+                        latitude: userLocation.coords.latitude,
+                        longitude: userLocation.coords.longitude
+                      }}
+                      title="Your Location"
+                      pinColor={palette.primary}
+                    />
+                  ) : null}
+                </NativeMapView>
+              ) : (
+                <View style={styles.mapUnavailableBox}>
+                  <Ionicons name="map-outline" size={24} color={palette.metaHint} />
+                  <Text style={styles.mapUnavailableText}>Map preview is available on iOS and Android builds.</Text>
+                </View>
+              )}
+            </View>
+          </View>
         </Modal>
 
         {errorMsg ? (

@@ -2,8 +2,7 @@ import type { Coordinates } from './Interface';
 import {
   GOOGLE_MAPS_ANDROID_API_KEY,
   GOOGLE_MAPS_API_KEY,
-  GOOGLE_MAPS_IOS_API_KEY,
-  GOOGLE_MAPS_WEB_API_KEY
+  GOOGLE_MAPS_IOS_API_KEY
 } from './constants';
 import { fetchWithTimeout } from './network';
 
@@ -57,7 +56,6 @@ type NominatimResult = {
 const GOOGLE_MAPS_KEYS = Array.from(
   new Set(
     [
-      GOOGLE_MAPS_WEB_API_KEY,
       GOOGLE_MAPS_API_KEY,
       GOOGLE_MAPS_ANDROID_API_KEY,
       GOOGLE_MAPS_IOS_API_KEY
@@ -65,14 +63,7 @@ const GOOGLE_MAPS_KEYS = Array.from(
   )
 );
 
-const ensureGoogleMapsKey = (): string[] => {
-  if (GOOGLE_MAPS_KEYS.length === 0) {
-    throw new Error(
-      'Google Maps API key missing. Set EXPO_PUBLIC_GOOGLE_MAPS_WEB_API_KEY for Places/Geocoding requests.'
-    );
-  }
-  return GOOGLE_MAPS_KEYS;
-};
+const getGoogleMapsKeys = (): string[] => GOOGLE_MAPS_KEYS;
 
 const isRetryableGoogleStatus = (status?: string): boolean => {
   return status === 'REQUEST_DENIED' || status === 'OVER_DAILY_LIMIT' || status === 'INVALID_REQUEST';
@@ -143,7 +134,10 @@ async function searchGoogleGeocode(query: string): Promise<AddressSuggestion[]> 
   if (trimmed.length < 2) {
     return [];
   }
-  const keys = ensureGoogleMapsKey();
+  const keys = getGoogleMapsKeys();
+  if (keys.length === 0) {
+    return searchNominatimFallback(trimmed);
+  }
   let lastError: Error | null = null;
   for (const key of keys) {
     try {
@@ -185,7 +179,10 @@ export async function resolveAddressByPlaceId(placeId: string): Promise<AddressS
   if (!trimmedId) {
     return null;
   }
-  const keys = ensureGoogleMapsKey();
+  const keys = getGoogleMapsKeys();
+  if (keys.length === 0) {
+    return null;
+  }
   let lastError: Error | null = null;
   for (const key of keys) {
     try {
@@ -225,7 +222,10 @@ export async function fetchAddressSuggestions(query: string): Promise<AddressSug
   if (trimmed.length < 2) {
     return [];
   }
-  const keys = ensureGoogleMapsKey();
+  const keys = getGoogleMapsKeys();
+  if (keys.length === 0) {
+    return searchNominatimFallback(trimmed);
+  }
 
   for (const key of keys) {
     try {

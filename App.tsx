@@ -30,7 +30,7 @@ import {
   TRIP_SAMPLE_RADIUS_KM
 } from './constants';
 import { fetchNearbyFuelData, getAccessToken } from './fuelApiClient';
-import { fetchAddressSuggestions, resolveAddressByPlaceId, type AddressSuggestion } from './geocodingClient';
+import { fetchAddressSuggestions, resolveAddress, resolveAddressByPlaceId, type AddressSuggestion } from './geocodingClient';
 import type { AppMode, Coordinates, FuelApiData, RankedStation } from './Interface';
 import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
 import { createThemedStyles, getPalette } from './theme';
@@ -62,8 +62,8 @@ export default function App() {
   const [routingSource, setRoutingSource] = useState<'live' | 'estimated'>('live');
   const [mapStation, setMapStation] = useState<RankedStation | null>(null);
   const [nativeMapsModule, setNativeMapsModule] = useState<typeof import('react-native-maps') | null>(null);
-  const [isStartInputFocused, setIsStartInputFocused] = useState(false);
-  const [isDestinationInputFocused, setIsDestinationInputFocused] = useState(false);
+  const [, setIsStartInputFocused] = useState(false);
+  const [, setIsDestinationInputFocused] = useState(false);
   const [selectedStartAddress, setSelectedStartAddress] = useState<AddressSuggestion | null>(null);
   const [selectedDestinationAddress, setSelectedDestinationAddress] = useState<AddressSuggestion | null>(null);
   const isMountedRef = useRef(true);
@@ -393,7 +393,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!showSettings || useCurrentLocation || !isStartInputFocused) {
+    if (!showSettings || useCurrentLocation) {
       setStartSuggestions([]);
       return () => {
         cancelled = true;
@@ -429,11 +429,11 @@ export default function App() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [showSettings, useCurrentLocation, tripStartAddress, isStartInputFocused]);
+  }, [showSettings, useCurrentLocation, tripStartAddress]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!showSettings || appMode !== 'oneWay' || !isDestinationInputFocused) {
+    if (!showSettings || appMode !== 'oneWay') {
       setDestinationSuggestions([]);
       return () => {
         cancelled = true;
@@ -469,7 +469,7 @@ export default function App() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [showSettings, appMode, tripDestinationAddress, isDestinationInputFocused]);
+  }, [showSettings, appMode, tripDestinationAddress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -625,7 +625,11 @@ export default function App() {
       if (hasResolvedCoords(candidate)) {
         return candidate;
       }
-      return resolveAddressByPlaceId(candidate.id);
+      const byPlaceId = await resolveAddressByPlaceId(candidate.id);
+      if (byPlaceId && hasResolvedCoords(byPlaceId)) {
+        return byPlaceId;
+      }
+      return resolveAddress(candidate.label);
     };
 
     try {

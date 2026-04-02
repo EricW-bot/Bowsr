@@ -1,4 +1,5 @@
 import type { Coordinates } from './Interface';
+import { Platform } from 'react-native';
 import {
   GOOGLE_MAPS_ANDROID_API_KEY,
   GOOGLE_MAPS_API_KEY,
@@ -85,6 +86,35 @@ const parseGeocodeResult = (result: GeocoderResult): AddressSuggestion | null =>
     }
   };
 };
+
+async function searchNativeGeocodeFallback(query: string): Promise<AddressSuggestion[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 2 || Platform.OS === 'web') {
+    return [];
+  }
+  try {
+    const Location = await import('expo-location');
+    const nativeResults = await Location.geocodeAsync(trimmed);
+    return (nativeResults ?? [])
+      .slice(0, 5)
+      .map((item, index) => {
+        if (!Number.isFinite(item.latitude) || !Number.isFinite(item.longitude)) {
+          return null;
+        }
+        return {
+          id: `native-geocode:${trimmed}:${index}`,
+          label: trimmed,
+          coordinates: {
+            latitude: item.latitude,
+            longitude: item.longitude
+          }
+        } as AddressSuggestion;
+      })
+      .filter((item): item is AddressSuggestion => item !== null);
+  } catch {
+    return [];
+  }
+}
 
 async function searchNominatimFallback(query: string): Promise<AddressSuggestion[]> {
   const trimmed = query.trim();
@@ -280,7 +310,14 @@ export async function fetchAddressSuggestions(query: string): Promise<AddressSug
   } catch (err) {
     // Any platform can hit key restriction/quotas; use a resilient fallback.
     try {
-      return await searchNominatimFallback(trimmed);
+      const nominatimResults = await searchNominatimFallback(trimmed);
+      if (nominatimResults.length > 0) {
+        return nominatimResults;
+      }
+      const nativeResults = await searchNativeGeocodeFallback(trimmed);
+      if (nativeResults.length > 0) {
+        return nativeResults;
+      }
     } catch {
       // Ignore; we'll throw the original Google error below.
     }
@@ -289,6 +326,17 @@ export async function fetchAddressSuggestions(query: string): Promise<AddressSug
 }
 
 export async function resolveAddress(query: string): Promise<AddressSuggestion | null> {
-  const results = await searchGoogleGeocode(query);
+  let results: AddressSuggestion[] = [];
+  try {
+    results = await searchGoogleGeocode(query);
+  } catch {
+    // If Google is unavailable/restricted, try native geocoding first on device.
+    const nativeResults = await searchNativeGeocodeFallback(query);
+    if (nativeResults.length > 0) {
+      results = nativeResults;
+    } else {
+      results = await searchNominatimFallback(query);
+    }
+  }
   return results[0] ?? null;
 }

@@ -800,25 +800,13 @@ export default function App() {
     stationLongitude: number,
     currentLocation?: { latitude: number; longitude: number } | null
   ): string => {
-    const latitudes = [stationLatitude];
-    const longitudes = [stationLongitude];
+    const station = `${stationLatitude},${stationLongitude}`;
     if (currentLocation) {
-      latitudes.push(currentLocation.latitude);
-      longitudes.push(currentLocation.longitude);
+      const origin = `${currentLocation.latitude},${currentLocation.longitude}`;
+      // Google Maps embed URL with origin + destination reliably shows both markers on web.
+      return `https://maps.google.com/maps?output=embed&saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(station)}`;
     }
-
-    const minLat = Math.min(...latitudes);
-    const maxLat = Math.max(...latitudes);
-    const minLon = Math.min(...longitudes);
-    const maxLon = Math.max(...longitudes);
-    const padding = 0.01;
-    const left = minLon - padding;
-    const right = maxLon + padding;
-    const top = maxLat + padding;
-    const bottom = minLat - padding;
-    const stationMarker = `&marker=${stationLatitude}%2C${stationLongitude}`;
-    const userMarker = currentLocation ? `&marker=${currentLocation.latitude}%2C${currentLocation.longitude}` : '';
-    return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik${stationMarker}${userMarker}`;
+    return `https://maps.google.com/maps?output=embed&q=${encodeURIComponent(station)}`;
   };
 
   const openExternalMapForStation = useCallback((station: RankedStation) => {

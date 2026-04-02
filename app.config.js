@@ -1,5 +1,3 @@
-const appJson = require('./app.json');
-
 const trim = (value) => {
   const raw = String(value ?? '').trim();
   if (
@@ -12,27 +10,52 @@ const trim = (value) => {
 };
 
 module.exports = () => {
-  const base = appJson.expo;
   const androidGoogleMapsApiKey = trim(process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY);
   const iosGoogleMapsApiKey = trim(process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY);
 
   return {
-    ...base,
+    name: 'Bowsr',
+    slug: 'FuelNearMe',
+    version: '1.0.0',
+    orientation: 'portrait',
+    icon: './assets/logo.png',
+    userInterfaceStyle: 'automatic',
+    splash: {
+      image: './assets/logo.png',
+      resizeMode: 'contain',
+      backgroundColor: '#ffffff'
+    },
     android: {
-      ...base.android,
+      adaptiveIcon: {
+        backgroundColor: '#E6F4FE',
+        foregroundImage: './assets/logo.png',
+        backgroundImage: './assets/logo.png',
+        monochromeImage: './assets/logo.png'
+      },
+      predictiveBackGestureEnabled: false,
+      package: 'com.pickradmin.bowsr',
       config: {
-        ...(base.android?.config ?? {}),
         googleMaps: {
-          ...((base.android?.config && base.android.config.googleMaps) || {}),
           apiKey: androidGoogleMapsApiKey
         }
       }
     },
     ios: {
-      ...base.ios,
+      supportsTablet: true,
+      bundleIdentifier: 'com.pickradmin.bowsr',
+      infoPlist: {
+        ITSAppUsesNonExemptEncryption: false
+      },
       config: {
-        ...(base.ios?.config ?? {}),
         googleMapsApiKey: iosGoogleMapsApiKey
+      }
+    },
+    web: {
+      favicon: './assets/logo.png'
+    },
+    extra: {
+      eas: {
+        projectId: 'ef898ff9-95fc-4a39-91e4-77cfdbd01c39'
       }
     },
     plugins: [

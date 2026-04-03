@@ -829,7 +829,11 @@ export default function App() {
   const openExternalMapForStation = useCallback((station: RankedStation) => {
     const { latitude, longitude } = station.location;
     const label = encodeURIComponent(station.name);
-    const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}&query_place_id=${label}`;
+    const query = `${latitude},${longitude}`;
+    const url =
+      Platform.OS === 'ios'
+        ? `http://maps.apple.com/?ll=${query}&q=${label}`
+        : `https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${label}`;
     void Linking.openURL(url);
   }, []);
 
@@ -957,7 +961,7 @@ export default function App() {
                   keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
                   style={styles.modalKeyboardWrap}
                 >
-                <View style={[styles.modalContent, Platform.OS === 'android' && styles.modalContentAndroid]}>
+                <View style={styles.modalContent}>
                   <View style={styles.modalHandle} />
                   <View style={styles.modalHeaderRow}>
                     <Ionicons name="settings-outline" size={20} color={palette.title} />
@@ -1298,29 +1302,49 @@ export default function App() {
                   </TouchableOpacity>
                 </View>
               ) : mapStation && Platform.OS === 'ios' && AppleMapsView ? (
-                <AppleMapsView
-                  style={styles.mapView}
-                  cameraPosition={{
-                    coordinates: {
-                      latitude: mapStation.location.latitude,
-                      longitude: mapStation.location.longitude
-                    },
-                    zoom: 14
-                  }}
-                  markers={mapMarkers}
-                />
+                <View style={styles.mapWebWrap}>
+                  <AppleMapsView
+                    style={styles.mapView}
+                    cameraPosition={{
+                      coordinates: {
+                        latitude: mapStation.location.latitude,
+                        longitude: mapStation.location.longitude
+                      },
+                      zoom: 14
+                    }}
+                    markers={mapMarkers}
+                  />
+                  <TouchableOpacity
+                    style={styles.mapOpenExternalButton}
+                    onPress={() => openExternalMapForStation(mapStation)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open map in Apple Maps"
+                  >
+                    <Text style={styles.mapOpenExternalButtonText}>Open in Apple Maps</Text>
+                  </TouchableOpacity>
+                </View>
               ) : mapStation && Platform.OS === 'android' && GoogleMapsView ? (
-                <GoogleMapsView
-                  style={styles.mapView}
-                  cameraPosition={{
-                    coordinates: {
-                      latitude: mapStation.location.latitude,
-                      longitude: mapStation.location.longitude
-                    },
-                    zoom: 14
-                  }}
-                  markers={mapMarkers}
-                />
+                <View style={styles.mapWebWrap}>
+                  <GoogleMapsView
+                    style={styles.mapView}
+                    cameraPosition={{
+                      coordinates: {
+                        latitude: mapStation.location.latitude,
+                        longitude: mapStation.location.longitude
+                      },
+                      zoom: 14
+                    }}
+                    markers={mapMarkers}
+                  />
+                  <TouchableOpacity
+                    style={styles.mapOpenExternalButton}
+                    onPress={() => openExternalMapForStation(mapStation)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open map in Google Maps"
+                  >
+                    <Text style={styles.mapOpenExternalButtonText}>Open in Google Maps</Text>
+                  </TouchableOpacity>
+                </View>
               ) : (
                 <View style={styles.mapUnavailableBox}>
                   <Ionicons name="map-outline" size={24} color={palette.metaHint} />

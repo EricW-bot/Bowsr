@@ -430,15 +430,12 @@ export function createThemedStyles(c: Palette) {
       padding: 18,
       width: '100%',
       maxWidth: 400,
-      maxHeight: '92%',
+      height: '92%',
       shadowColor: c.cardShadow,
       shadowOffset: { width: 0, height: 10 },
       shadowOpacity: 0.2,
       shadowRadius: 18,
       elevation: 5
-    },
-    modalContentAndroid: {
-      height: '92%'
     },
     modalScroll: {
       flex: 1

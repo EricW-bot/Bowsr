@@ -603,10 +603,6 @@ export default function App() {
   }, [getRoundTripStartMissingMessage, getTripAddressMissingMessage]);
 
   const handleSaveSettings = async () => {
-    if (!userLocation) {
-      return;
-    }
-
     const nextFuelType = normalizeFuelType(fuelType);
     const nextBrands = normalizeBrands(selectedBrands);
     setFuelType(nextFuelType);
@@ -627,9 +623,15 @@ export default function App() {
       setLoading(true);
     }
 
+    if (useCurrentLocation && !userLocation) {
+      setErrorMsg('Current location is unavailable. Turn off "Use my location" or enable location access.');
+      setLoading(false);
+      return;
+    }
+
     let nextTripStart = {
-      latitude: userLocation.coords.latitude,
-      longitude: userLocation.coords.longitude
+      latitude: userLocation?.coords.latitude ?? 0,
+      longitude: userLocation?.coords.longitude ?? 0
     };
     let nextTripDestination = tripDestination;
     const hasResolvedCoords = (candidate: AddressSuggestion | null): boolean => {

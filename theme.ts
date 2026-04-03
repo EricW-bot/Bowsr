@@ -754,8 +754,8 @@ export function createThemedStyles(c: Palette) {
     },
     mapOpenExternalButton: {
       position: 'absolute',
-      right: 12,
-      bottom: 12,
+      left: 12,
+      top: 12,
       backgroundColor: c.primary,
       borderRadius: 999,
       paddingVertical: 8,

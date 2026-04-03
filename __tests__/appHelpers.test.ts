@@ -1,6 +1,7 @@
 import {
   buildExternalMapUrl,
   buildWebMapEmbedUrl,
+  buildWebOneWayMapEmbedUrl,
   getRoundTripStartMissingMessage,
   getTripAddressMissingMessage
 } from '../appHelpers';
@@ -30,6 +31,18 @@ describe('appHelpers', () => {
     expect(withoutCurrent).toContain('output=embed');
     expect(withoutCurrent).toContain('q=');
     expect(withoutCurrent).not.toContain('saddr=');
+  });
+
+  it('builds one-way embed URL including station waypoint', () => {
+    const url = buildWebOneWayMapEmbedUrl(
+      { latitude: -33.9, longitude: 151.1 },
+      { latitude: -33.86, longitude: 151.2 },
+      { latitude: -33.8, longitude: 151.25 }
+    );
+    expect(url).toContain('output=embed');
+    expect(url).toContain('saddr=');
+    expect(url).toContain('daddr=');
+    expect(url).toContain('waypoints=');
   });
 
   it('builds external map URLs per platform', () => {

@@ -40,11 +40,13 @@ import { getErrorMessage, normalizeBrands, normalizeFuelType } from './utils';
 import {
   buildExternalMapUrl,
   buildWebMapEmbedUrl,
+  buildWebOneWayMapEmbedUrl,
   getRoundTripStartMissingMessage,
   getTripAddressMissingMessage,
   LIVE_DATA_TIMEOUT_MS
 } from './appHelpers';
 import { getCurrentLocationWithTimeout } from './locationHelpers';
+import { fetchOneWayRouteGeometry, fetchRoundTripRouteGeometry } from './routeGeometryHelpers';
 
 type ExpoMapMarker = {
   id: string;
@@ -54,6 +56,16 @@ type ExpoMapMarker = {
   };
   title?: string;
   snippet?: string;
+};
+
+type ExpoMapPolyline = {
+  id: string;
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  }[];
+  color?: string;
+  width?: number;
 };
 
 export default function App() {
@@ -85,6 +97,8 @@ export default function App() {
   const [isDestinationInputFocused, setIsDestinationInputFocused] = useState(false);
   const [selectedStartAddress, setSelectedStartAddress] = useState<AddressSuggestion | null>(null);
   const [selectedDestinationAddress, setSelectedDestinationAddress] = useState<AddressSuggestion | null>(null);
+  const [oneWayRouteGeometry, setOneWayRouteGeometry] = useState<Coordinates[] | null>(null);
+  const [roundTripRouteGeometry, setRoundTripRouteGeometry] = useState<Coordinates[] | null>(null);
   const isMountedRef = useRef(true);
   const isSelectingSuggestionRef = useRef(false);
   const latestRankingRequestIdRef = useRef(0);
@@ -860,10 +874,251 @@ export default function App() {
     };
   }, [userLocation]);
 
+  const oneWayStartPoint = useMemo<Coordinates | null>(() => {
+    if (appMode !== 'oneWay') {
+      return null;
+    }
+    if (useCurrentLocation) {
+      if (!userLocation) {
+        return null;
+      }
+      return {
+        latitude: userLocation.coords.latitude,
+        longitude: userLocation.coords.longitude
+      };
+    }
+    return selectedStartAddress?.coordinates ?? null;
+  }, [appMode, useCurrentLocation, userLocation, selectedStartAddress]);
+
+  const destinationMarker = useMemo<ExpoMapMarker | null>(() => {
+    if (appMode !== 'oneWay') {
+      return null;
+    }
+    return {
+      id: 'destination',
+      coordinates: {
+        latitude: tripDestination.latitude,
+        longitude: tripDestination.longitude
+      },
+      title: 'Destination',
+      snippet: tripDestinationAddress.trim() || 'Trip destination'
+    };
+  }, [appMode, tripDestination, tripDestinationAddress]);
+
+  const roundTripStartPoint = useMemo<Coordinates | null>(() => {
+    if (appMode !== 'roundTrip') {
+      return null;
+    }
+    if (useCurrentLocation) {
+      if (!userLocation) {
+        return null;
+      }
+      return {
+        latitude: userLocation.coords.latitude,
+        longitude: userLocation.coords.longitude
+      };
+    }
+    return selectedStartAddress?.coordinates ?? null;
+  }, [appMode, selectedStartAddress, useCurrentLocation, userLocation]);
+
+  const roundTripStartMarker = useMemo<ExpoMapMarker | null>(() => {
+    if (!roundTripStartPoint) {
+      return null;
+    }
+    return {
+      id: 'round-trip-start',
+      coordinates: roundTripStartPoint,
+      title: useCurrentLocation ? 'Start (GPS)' : 'Start',
+      snippet: useCurrentLocation ? 'Current location' : tripStartAddress.trim() || 'Trip start'
+    };
+  }, [roundTripStartPoint, tripStartAddress, useCurrentLocation]);
+
+  const startMarker = useMemo<ExpoMapMarker | null>(() => {
+    if (!oneWayStartPoint) {
+      return null;
+    }
+    return {
+      id: 'trip-start',
+      coordinates: oneWayStartPoint,
+      title: useCurrentLocation ? 'Start (GPS)' : 'Start',
+      snippet: useCurrentLocation ? 'Current location' : tripStartAddress.trim() || 'Trip start'
+    };
+  }, [oneWayStartPoint, useCurrentLocation, tripStartAddress]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const stationPoint = mapStation
+      ? {
+          latitude: mapStation.location.latitude,
+          longitude: mapStation.location.longitude
+        }
+      : null;
+
+    if (Platform.OS === 'web' || appMode !== 'oneWay' || !oneWayStartPoint || !stationPoint) {
+      setOneWayRouteGeometry(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      const geometry = await fetchOneWayRouteGeometry(oneWayStartPoint, stationPoint, tripDestination);
+      if (!cancelled) {
+        setOneWayRouteGeometry(geometry);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appMode, mapStation, oneWayStartPoint, tripDestination]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const stationPoint = mapStation
+      ? {
+          latitude: mapStation.location.latitude,
+          longitude: mapStation.location.longitude
+        }
+      : null;
+
+    if (Platform.OS === 'web' || appMode !== 'roundTrip' || !roundTripStartPoint || !stationPoint) {
+      setRoundTripRouteGeometry(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      const geometry = await fetchRoundTripRouteGeometry(roundTripStartPoint, stationPoint);
+      if (!cancelled) {
+        setRoundTripRouteGeometry(geometry);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appMode, mapStation, roundTripStartPoint]);
+
   const mapMarkers = useMemo<ExpoMapMarker[]>(
-    () => [stationMarker, userMarker].filter((marker): marker is ExpoMapMarker => marker !== null),
-    [stationMarker, userMarker]
+    () =>
+      appMode === 'oneWay'
+        ? [startMarker, stationMarker, destinationMarker].filter((marker): marker is ExpoMapMarker => marker !== null)
+        : [roundTripStartMarker, stationMarker, userMarker].filter((marker): marker is ExpoMapMarker => marker !== null),
+    [appMode, destinationMarker, roundTripStartMarker, startMarker, stationMarker, userMarker]
   );
+
+  const mapPolylines = useMemo<ExpoMapPolyline[]>(
+    () =>
+      appMode === 'oneWay' && oneWayStartPoint && mapStation
+        ? [
+            {
+              id: 'one-way-route',
+              coordinates: [
+                ...(oneWayRouteGeometry ?? [
+                  oneWayStartPoint,
+                  {
+                    latitude: mapStation.location.latitude,
+                    longitude: mapStation.location.longitude
+                  },
+                  {
+                    latitude: tripDestination.latitude,
+                    longitude: tripDestination.longitude
+                  }
+                ])
+              ],
+              color: palette.primary,
+              width: 4
+            }
+          ]
+        : appMode === 'roundTrip' && roundTripStartPoint && mapStation
+          ? [
+              {
+                id: 'round-trip-route',
+                coordinates: [
+                  ...(roundTripRouteGeometry ?? [
+                    roundTripStartPoint,
+                    {
+                      latitude: mapStation.location.latitude,
+                      longitude: mapStation.location.longitude
+                    },
+                    roundTripStartPoint
+                  ])
+                ],
+                color: palette.primary,
+                width: 4
+              }
+            ]
+        : [],
+    [
+      appMode,
+      mapStation,
+      oneWayRouteGeometry,
+      oneWayStartPoint,
+      palette.primary,
+      roundTripRouteGeometry,
+      roundTripStartPoint,
+      tripDestination
+    ]
+  );
+
+  const mapCameraPosition = useMemo(() => {
+    if (!mapStation) {
+      return {
+        coordinates: { latitude: 0, longitude: 0 },
+        zoom: 14
+      };
+    }
+
+    if (appMode === 'oneWay' && oneWayStartPoint) {
+      const latitudes = [oneWayStartPoint.latitude, mapStation.location.latitude, tripDestination.latitude];
+      const longitudes = [oneWayStartPoint.longitude, mapStation.location.longitude, tripDestination.longitude];
+      const minLat = Math.min(...latitudes);
+      const maxLat = Math.max(...latitudes);
+      const minLon = Math.min(...longitudes);
+      const maxLon = Math.max(...longitudes);
+      const span = Math.max(maxLat - minLat, maxLon - minLon);
+      const zoom =
+        span > 1 ? 7 : span > 0.5 ? 8 : span > 0.2 ? 9 : span > 0.1 ? 10 : span > 0.05 ? 11 : span > 0.02 ? 12 : 13;
+
+      return {
+        coordinates: {
+          latitude: (minLat + maxLat) / 2,
+          longitude: (minLon + maxLon) / 2
+        },
+        zoom
+      };
+    }
+
+    if (appMode === 'roundTrip' && roundTripStartPoint) {
+      const latitudes = [roundTripStartPoint.latitude, mapStation.location.latitude];
+      const longitudes = [roundTripStartPoint.longitude, mapStation.location.longitude];
+      const minLat = Math.min(...latitudes);
+      const maxLat = Math.max(...latitudes);
+      const minLon = Math.min(...longitudes);
+      const maxLon = Math.max(...longitudes);
+      const span = Math.max(maxLat - minLat, maxLon - minLon);
+      const zoom =
+        span > 1 ? 7 : span > 0.5 ? 8 : span > 0.2 ? 9 : span > 0.1 ? 10 : span > 0.05 ? 11 : span > 0.02 ? 12 : 13;
+
+      return {
+        coordinates: {
+          latitude: (minLat + maxLat) / 2,
+          longitude: (minLon + maxLon) / 2
+        },
+        zoom
+      };
+    }
+
+    return {
+      coordinates: {
+        latitude: mapStation.location.latitude,
+        longitude: mapStation.location.longitude
+      },
+      zoom: 14
+    };
+  }, [appMode, mapStation, oneWayStartPoint, roundTripStartPoint, tripDestination]);
 
   return (
     <SafeAreaProvider>
@@ -1277,7 +1532,17 @@ export default function App() {
                 <View style={styles.mapWebWrap}>
                   {React.createElement('iframe', {
                     title: `map-${mapStation.code}`,
-                    src: buildWebMapEmbedUrl(mapStation.location.latitude, mapStation.location.longitude, userLocation?.coords),
+                    src:
+                      appMode === 'oneWay' && oneWayStartPoint
+                        ? buildWebOneWayMapEmbedUrl(
+                            oneWayStartPoint,
+                            {
+                              latitude: mapStation.location.latitude,
+                              longitude: mapStation.location.longitude
+                            },
+                            tripDestination
+                          )
+                        : buildWebMapEmbedUrl(mapStation.location.latitude, mapStation.location.longitude, userLocation?.coords),
                     style: {
                       width: '100%',
                       height: '100%',
@@ -1298,14 +1563,9 @@ export default function App() {
                 <View style={styles.mapWebWrap}>
                   <AppleMapsView
                     style={styles.mapView}
-                    cameraPosition={{
-                      coordinates: {
-                        latitude: mapStation.location.latitude,
-                        longitude: mapStation.location.longitude
-                      },
-                      zoom: 14
-                    }}
+                    cameraPosition={mapCameraPosition}
                     markers={mapMarkers}
+                    polylines={mapPolylines}
                   />
                   <TouchableOpacity
                     style={styles.mapOpenExternalButton}
@@ -1320,14 +1580,9 @@ export default function App() {
                 <View style={styles.mapWebWrap}>
                   <GoogleMapsView
                     style={styles.mapView}
-                    cameraPosition={{
-                      coordinates: {
-                        latitude: mapStation.location.latitude,
-                        longitude: mapStation.location.longitude
-                      },
-                      zoom: 14
-                    }}
+                    cameraPosition={mapCameraPosition}
                     markers={mapMarkers}
+                    polylines={mapPolylines}
                   />
                   <TouchableOpacity
                     style={styles.mapOpenExternalButton}

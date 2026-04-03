@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import type { RankedStation } from './Interface';
+import type { Coordinates, RankedStation } from './Interface';
 
 export const LOCATION_TIMEOUT_MS = 15000;
 export const LIVE_DATA_TIMEOUT_MS = 180000;
@@ -40,6 +40,13 @@ export function buildWebMapEmbedUrl(
     return `https://maps.google.com/maps?output=embed&saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(station)}`;
   }
   return `https://maps.google.com/maps?output=embed&q=${encodeURIComponent(station)}`;
+}
+
+export function buildWebOneWayMapEmbedUrl(start: Coordinates, station: Coordinates, destination: Coordinates): string {
+  const origin = `${start.latitude},${start.longitude}`;
+  const stop = `${station.latitude},${station.longitude}`;
+  const end = `${destination.latitude},${destination.longitude}`;
+  return `https://maps.google.com/maps?output=embed&saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(end)}&waypoints=${encodeURIComponent(stop)}`;
 }
 
 export function buildExternalMapUrl(station: RankedStation, platformOs: string = Platform.OS): string {

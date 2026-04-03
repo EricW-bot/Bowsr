@@ -437,6 +437,9 @@ export function createThemedStyles(c: Palette) {
       shadowRadius: 18,
       elevation: 5
     },
+    modalContentAndroid: {
+      height: '92%'
+    },
     modalScroll: {
       flex: 1
     },

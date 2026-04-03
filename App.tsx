@@ -642,11 +642,22 @@ export default function App() {
       if (hasResolvedCoords(candidate)) {
         return candidate;
       }
-      const byPlaceId = await resolveAddressByPlaceId(candidate.id);
-      if (byPlaceId && hasResolvedCoords(byPlaceId)) {
-        return byPlaceId;
+      try {
+        const byPlaceId = await resolveAddressByPlaceId(candidate.id);
+        if (byPlaceId && hasResolvedCoords(byPlaceId)) {
+          return byPlaceId;
+        }
+      } catch (err) {
+        // Some Android keys are app-restricted and block Places Details requests.
+        // Fall through to label-based geocoding so save/recalculate can still proceed.
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`Place details fallback triggered: ${message}`);
       }
-      return resolveAddress(candidate.label);
+      try {
+        return await resolveAddress(candidate.label);
+      } catch {
+        return null;
+      }
     };
 
     try {
@@ -942,11 +953,11 @@ export default function App() {
                 accessibilityLabel="Close settings"
               />
                 <KeyboardAvoidingView
-                  behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
-                  keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : Platform.OS === 'android' ? 8 : 0}
+                  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                  keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
                   style={styles.modalKeyboardWrap}
                 >
-                <View style={styles.modalContent}>
+                <View style={[styles.modalContent, Platform.OS === 'android' && styles.modalContentAndroid]}>
                   <View style={styles.modalHandle} />
                   <View style={styles.modalHeaderRow}>
                     <Ionicons name="settings-outline" size={20} color={palette.title} />

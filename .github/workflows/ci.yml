@@ -10,11 +10,15 @@ on:
     branches: [main]
 
 jobs:
-  typecheck:
+  checks:
     runs-on: ubuntu-latest
     env:
       EXPO_PUBLIC_API_KEY: ${{ secrets.EXPO_PUBLIC_API_KEY }}
       EXPO_PUBLIC_BASIC_AUTH: ${{ secrets.EXPO_PUBLIC_BASIC_AUTH }}
+      EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY }}
+      EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY }}
+      EXPO_PUBLIC_GOOGLE_MAPS_WEB_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_WEB_API_KEY }}
+      EXPO_PUBLIC_OPENROUTESERVICE_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENROUTESERVICE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,3 +28,4 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npx tsc --noEmit
+      - run: npm test -- --runInBand

@@ -37,6 +37,14 @@ import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
 import { createThemedStyles, getPalette } from './theme';
 import { runTripAlgorithmValidation } from './tripValidation';
 import { getErrorMessage, normalizeBrands, normalizeFuelType } from './utils';
+import {
+  buildExternalMapUrl,
+  buildWebMapEmbedUrl,
+  getRoundTripStartMissingMessage,
+  getTripAddressMissingMessage,
+  LIVE_DATA_TIMEOUT_MS
+} from './appHelpers';
+import { getCurrentLocationWithTimeout } from './locationHelpers';
 
 type ExpoMapMarker = {
   id: string;
@@ -174,7 +182,6 @@ export default function App() {
 
   const fetchAndRankFuelData = useCallback(
     async (userLat: number, userLon: number, needed: string, economy: string, fuelTypeInput: string, brandsInput: string[]) => {
-      const LIVE_DATA_TIMEOUT_MS = 180000; // 3 minutes watchdog (prevents "Loading..." forever)
       const watchdog = new Promise<never>((_, reject) => {
         setTimeout(() => {
           reject(new Error(`Live data timed out after ${LIVE_DATA_TIMEOUT_MS / 1000}s`));
@@ -232,30 +239,6 @@ export default function App() {
     latitude: (start.latitude + end.latitude) / 2,
     longitude: (start.longitude + end.longitude) / 2
   });
-
-  const getTripAddressMissingMessage = useCallback(
-    (startAddress: string, destinationAddress: string, useGpsForStart: boolean): string | null => {
-      const missing: string[] = [];
-      if (!useGpsForStart && startAddress.trim().length === 0) {
-        missing.push('start address');
-      }
-      if (destinationAddress.trim().length === 0) {
-        missing.push('destination address');
-      }
-      if (missing.length === 0) {
-        return null;
-      }
-      return `One-way mode needs ${missing.join(' and ')}. Please set the missing address(es) in Settings.`;
-    },
-    []
-  );
-
-  const getRoundTripStartMissingMessage = useCallback((startAddress: string, useGpsForStart: boolean): string | null => {
-    if (useGpsForStart || startAddress.trim().length > 0) {
-      return null;
-    }
-    return 'Round-trip mode needs a start address when GPS start is off. Please set Start Address in Settings.';
-  }, []);
 
   const fetchTripCandidatePool = useCallback(
     async (
@@ -334,7 +317,6 @@ export default function App() {
 
   const fetchAndRankTripData = useCallback(
     async (start: Coordinates, destination: Coordinates, needed: string, economy: string, fuelTypeInput: string, brandsInput: string[]) => {
-      const LIVE_DATA_TIMEOUT_MS = 180000;
       const watchdog = new Promise<never>((_, reject) => {
         setTimeout(() => {
           reject(new Error(`Live data timed out after ${LIVE_DATA_TIMEOUT_MS / 1000}s`));
@@ -527,21 +509,35 @@ export default function App() {
             : null
         );
 
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (cancelled) return;
-        if (status !== 'granted') {
-          setErrorMsg('Permission to access location was denied');
-          setLoading(false);
-          return;
-        }
+        let location: Location.LocationObject | null = null;
+        if (prefs.useCurrentLocation) {
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (cancelled) return;
+          if (status !== 'granted') {
+            setErrorMsg('Permission to access location was denied');
+            setLoading(false);
+            return;
+          }
 
-        // Avoid an infinite spinner if GPS/permissions are slow or unavailable in TestFlight.
-        const location = await Promise.race([
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Location timed out')), 15000))
-        ]);
-        if (cancelled) return;
-        setUserLocation(location);
+          // Avoid an infinite spinner if GPS/permissions are slow or unavailable in TestFlight.
+          location = await getCurrentLocationWithTimeout();
+          if (cancelled) return;
+          setUserLocation(location);
+        } else {
+          // Address mode should still try to show current-location pin on maps when permission
+          // was already granted, but this must never block initialization.
+          try {
+            const permissions = await Location.getForegroundPermissionsAsync();
+            if (!cancelled && permissions.status === 'granted') {
+              location = await getCurrentLocationWithTimeout();
+              if (!cancelled) {
+                setUserLocation(location);
+              }
+            }
+          } catch {
+            // Ignore best-effort location failures in address mode.
+          }
+        }
 
         if (prefs.appMode === 'oneWay') {
           const missingMessage = getTripAddressMissingMessage(
@@ -555,11 +551,15 @@ export default function App() {
             return;
           }
 
+          const oneWayStart = prefs.useCurrentLocation
+            ? {
+                latitude: location?.coords.latitude ?? 0,
+                longitude: location?.coords.longitude ?? 0
+              }
+            : prefs.tripStart;
+
           await fetchAndRankTripDataRef.current(
-            {
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude
-            },
+            oneWayStart,
             prefs.tripDestination,
             prefs.fuelNeeded,
             prefs.fuelEconomy,
@@ -576,8 +576,8 @@ export default function App() {
 
           const roundTripStart = prefs.useCurrentLocation
             ? {
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude
+                latitude: location?.coords.latitude ?? 0,
+                longitude: location?.coords.longitude ?? 0
               }
             : prefs.tripStart;
 
@@ -600,7 +600,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [getRoundTripStartMissingMessage, getTripAddressMissingMessage]);
+  }, []);
 
   const handleSaveSettings = async () => {
     const nextFuelType = normalizeFuelType(fuelType);
@@ -618,20 +618,32 @@ export default function App() {
     if (missingMessage) {
       setErrorMsg(missingMessage);
       setLoading(false);
-    } else {
-      setErrorMsg(null);
-      setLoading(true);
-    }
-
-    if (useCurrentLocation && !userLocation) {
-      setErrorMsg('Current location is unavailable. Turn off "Use my location" or enable location access.');
-      setLoading(false);
       return;
+    }
+    setErrorMsg(null);
+    setLoading(true);
+
+    let resolvedUserLocation = userLocation;
+    if (useCurrentLocation && !resolvedUserLocation) {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setErrorMsg('Location permission is required when "Use my location" is enabled.');
+          setLoading(false);
+          return;
+        }
+        resolvedUserLocation = await getCurrentLocationWithTimeout();
+        setUserLocation(resolvedUserLocation);
+      } catch (err) {
+        setErrorMsg(getErrorMessage(err, 'Could not get current location. Try again or use start address.'));
+        setLoading(false);
+        return;
+      }
     }
 
     let nextTripStart = {
-      latitude: userLocation?.coords.latitude ?? 0,
-      longitude: userLocation?.coords.longitude ?? 0
+      latitude: resolvedUserLocation?.coords.latitude ?? 0,
+      longitude: resolvedUserLocation?.coords.longitude ?? 0
     };
     let nextTripDestination = tripDestination;
     const hasResolvedCoords = (candidate: AddressSuggestion | null): boolean => {
@@ -814,29 +826,8 @@ export default function App() {
           ? 'Destination address selected'
           : 'Select a destination suggestion';
 
-  const buildWebMapEmbedUrl = (
-    stationLatitude: number,
-    stationLongitude: number,
-    currentLocation?: { latitude: number; longitude: number } | null
-  ): string => {
-    const station = `${stationLatitude},${stationLongitude}`;
-    if (currentLocation) {
-      const origin = `${currentLocation.latitude},${currentLocation.longitude}`;
-      // Google Maps embed URL with origin + destination reliably shows both markers on web.
-      return `https://maps.google.com/maps?output=embed&saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(station)}`;
-    }
-    return `https://maps.google.com/maps?output=embed&q=${encodeURIComponent(station)}`;
-  };
-
   const openExternalMapForStation = useCallback((station: RankedStation) => {
-    const { latitude, longitude } = station.location;
-    const label = encodeURIComponent(station.name);
-    const query = `${latitude},${longitude}`;
-    const url =
-      Platform.OS === 'ios'
-        ? `http://maps.apple.com/?ll=${query}&q=${label}`
-        : `https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${label}`;
-    void Linking.openURL(url);
+    void Linking.openURL(buildExternalMapUrl(station));
   }, []);
 
   const stationMarker = useMemo<ExpoMapMarker | null>(() => {

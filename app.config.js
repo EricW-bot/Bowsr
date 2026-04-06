@@ -12,6 +12,9 @@ const trim = (value) => {
 module.exports = () => {
   const androidGoogleMapsApiKey = trim(process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY);
 
+  const iosLocationPurpose =
+    'Bowsr uses your location to find fuel stations near you and to show your trip on the map. For example, when you choose "Use my location," we use your coordinates to list nearby stations by distance and to set your trip start point.';
+
   return {
     name: 'Bowsr',
     slug: 'FuelNearMe',
@@ -59,13 +62,15 @@ module.exports = () => {
         'expo-maps',
         {
           requestLocationPermission: true,
-          locationPermission: 'Allow Bowsr to use your location'
+          locationPermission: iosLocationPurpose
         }
       ],
       [
         'expo-location',
         {
-          locationAlwaysAndWhenInUsePermission: 'Allow Bowsr to use your location'
+          locationAlwaysAndWhenInUsePermission: iosLocationPurpose,
+          locationAlwaysPermission: iosLocationPurpose,
+          locationWhenInUsePermission: iosLocationPurpose
         }
       ],
       'expo-font'

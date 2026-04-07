@@ -1127,7 +1127,7 @@ export default function App() {
         <View style={styles.header}>
           <View style={[styles.headerRow, isCompactHeader && styles.headerRowCompact]}>
             <View style={styles.headerMain}>
-              <Text style={styles.title}>Bowsr</Text>
+              <Text style={styles.title}>OnlyFuel</Text>
               <Text style={styles.subtitle}>{appMode === 'oneWay' ? 'One-way one-stop planner' : 'Round-trip nearby ranking'}</Text>
               <View style={styles.headerMetaRow}>
                 <View style={styles.fuelTypeBadge}>

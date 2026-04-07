@@ -35,7 +35,7 @@ module.exports = () => {
         monochromeImage: './assets/logo.png'
       },
       predictiveBackGestureEnabled: false,
-      package: 'com.pickradmin.onlyfuel',
+      package: 'com.pickradmin.bowsr',
       config: {
         googleMaps: {
           apiKey: androidGoogleMapsApiKey
@@ -44,7 +44,7 @@ module.exports = () => {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.pickradmin.onlyfuel',
+      bundleIdentifier: 'com.pickradmin.bowsr',
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false
       }

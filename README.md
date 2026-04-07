@@ -4,7 +4,7 @@ A small Expo (React Native) app that finds **NSW fuel stations** near you, pulls
 
 ## Downloads
 
-- Android: [Install OnlyFuel](https://play.google.com/store/apps/details?id=com.pickradmin.onlyfuel)
+- Android: [Install OnlyFuel](https://play.google.com/store/apps/details?id=com.pickradmin.bowsr)
 - iOS: [Install OnlyFuel](https://testflight.apple.com/join/w7xkJ2g5)
 
 ## How it works (abstract)

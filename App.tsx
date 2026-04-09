@@ -68,6 +68,22 @@ type ExpoMapPolyline = {
   width?: number;
 };
 
+/** One-shot text expansion typical of OS keyboard autocomplete or paste (not single-character typing). */
+function isLikelyImeAddressCommit(prev: string, value: string): boolean {
+  const trimmed = value.trim();
+  const prevTrim = prev.trim();
+  if (trimmed.length < 5 || prev === value) {
+    return false;
+  }
+  if (value.length <= prev.length) {
+    return false;
+  }
+  if (value.length - prev.length >= 4) {
+    return true;
+  }
+  return prevTrim.length >= 2 && trimmed.startsWith(prevTrim) && trimmed.length - prevTrim.length >= 5;
+}
+
 export default function App() {
   const colorScheme = useColorScheme();
   const themeMode = colorScheme === 'dark' ? 'dark' : 'light';
@@ -101,6 +117,10 @@ export default function App() {
   const [roundTripRouteGeometry, setRoundTripRouteGeometry] = useState<Coordinates[] | null>(null);
   const isMountedRef = useRef(true);
   const isSelectingSuggestionRef = useRef(false);
+  const prevStartAddressForImeRef = useRef('');
+  const prevDestinationAddressForImeRef = useRef('');
+  const suppressStartSuggestionFetchRef = useRef(false);
+  const suppressDestinationSuggestionFetchRef = useRef(false);
   const latestRankingRequestIdRef = useRef(0);
   const { width } = useWindowDimensions();
   const isCompactHeader = width < 390;
@@ -398,6 +418,72 @@ export default function App() {
   const fetchAndRankTripDataRef = useRef(fetchAndRankTripData);
   fetchAndRankTripDataRef.current = fetchAndRankTripData;
 
+  const applyStartFromSuggestion = useCallback((suggestion: AddressSuggestion, source: 'list' | 'inline', initialText?: string) => {
+    const text = initialText ?? suggestion.label;
+    if (source === 'list') {
+      isSelectingSuggestionRef.current = true;
+    }
+    setTripStartAddress(text);
+    setSelectedStartAddress(suggestion);
+    let latestLabelForIme = text;
+    void (async () => {
+      try {
+        const resolved = await resolveAddressByPlaceId(suggestion.id);
+        if (resolved) {
+          latestLabelForIme = resolved.label;
+          setTripStartAddress(resolved.label);
+          setSelectedStartAddress(resolved);
+        }
+      } catch {
+        // Keep optimistic label; coordinates are validated on save.
+      } finally {
+        prevStartAddressForImeRef.current = latestLabelForIme;
+        if (source === 'list') {
+          isSelectingSuggestionRef.current = false;
+        }
+        setStartSuggestions([]);
+        setSearchingStart(false);
+        if (source === 'list') {
+          setIsStartInputFocused(false);
+          Keyboard.dismiss();
+        }
+      }
+    })();
+  }, []);
+
+  const applyDestinationFromSuggestion = useCallback((suggestion: AddressSuggestion, source: 'list' | 'inline', initialText?: string) => {
+    const text = initialText ?? suggestion.label;
+    if (source === 'list') {
+      isSelectingSuggestionRef.current = true;
+    }
+    setTripDestinationAddress(text);
+    setSelectedDestinationAddress(suggestion);
+    let latestLabelForIme = text;
+    void (async () => {
+      try {
+        const resolved = await resolveAddressByPlaceId(suggestion.id);
+        if (resolved) {
+          latestLabelForIme = resolved.label;
+          setTripDestinationAddress(resolved.label);
+          setSelectedDestinationAddress(resolved);
+        }
+      } catch {
+        // Keep optimistic label; coordinates are validated on save.
+      } finally {
+        prevDestinationAddressForImeRef.current = latestLabelForIme;
+        if (source === 'list') {
+          isSelectingSuggestionRef.current = false;
+        }
+        setDestinationSuggestions([]);
+        setSearchingDestination(false);
+        if (source === 'list') {
+          setIsDestinationInputFocused(false);
+          Keyboard.dismiss();
+        }
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const shouldFetchStartSuggestions =
@@ -410,6 +496,18 @@ export default function App() {
       };
     }
     const q = tripStartAddress.trim();
+    if (selectedStartAddress && selectedStartAddress.label.trim() === q) {
+      setStartSuggestions([]);
+      setSearchingStart(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (suppressStartSuggestionFetchRef.current) {
+      return () => {
+        cancelled = true;
+      };
+    }
     if (q.length < 2) {
       setStartSuggestions([]);
       return () => {
@@ -439,7 +537,7 @@ export default function App() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [showSettings, useCurrentLocation, tripStartAddress, isStartInputFocused]);
+  }, [showSettings, useCurrentLocation, tripStartAddress, isStartInputFocused, selectedStartAddress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -453,6 +551,18 @@ export default function App() {
       };
     }
     const q = tripDestinationAddress.trim();
+    if (selectedDestinationAddress && selectedDestinationAddress.label.trim() === q) {
+      setDestinationSuggestions([]);
+      setSearchingDestination(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (suppressDestinationSuggestionFetchRef.current) {
+      return () => {
+        cancelled = true;
+      };
+    }
     if (q.length < 2) {
       setDestinationSuggestions([]);
       return () => {
@@ -482,7 +592,7 @@ export default function App() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [showSettings, appMode, tripDestinationAddress, isDestinationInputFocused]);
+  }, [showSettings, appMode, tripDestinationAddress, isDestinationInputFocused, selectedDestinationAddress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -504,6 +614,8 @@ export default function App() {
         setTripDestination(prefs.tripDestination);
         setTripStartAddress(prefs.tripStartAddress);
         setTripDestinationAddress(prefs.tripDestinationAddress);
+        prevStartAddressForImeRef.current = prefs.tripStartAddress;
+        prevDestinationAddressForImeRef.current = prefs.tripDestinationAddress;
         setSelectedStartAddress(
           prefs.tripStartAddress.trim().length > 0
             ? {
@@ -1295,6 +1407,40 @@ export default function App() {
                         style={styles.input}
                         value={tripStartAddress}
                         onChangeText={(value) => {
+                          const prev = prevStartAddressForImeRef.current;
+                          prevStartAddressForImeRef.current = value;
+                          const trimmed = value.trim();
+
+                          const exact = startSuggestions.find((s) => s.label.trim() === trimmed);
+                          if (exact) {
+                            applyStartFromSuggestion(exact, 'inline', value);
+                            return;
+                          }
+
+                          if (isLikelyImeAddressCommit(prev, value)) {
+                            suppressStartSuggestionFetchRef.current = true;
+                            setTripStartAddress(value);
+                            setSelectedStartAddress(null);
+                            setStartSuggestions([]);
+                            setSearchingStart(true);
+                            void (async () => {
+                              try {
+                                const resolved = await resolveAddress(trimmed);
+                                if (resolved) {
+                                  setTripStartAddress(resolved.label);
+                                  setSelectedStartAddress(resolved);
+                                  prevStartAddressForImeRef.current = resolved.label;
+                                }
+                              } catch {
+                                // Leave text; user can pick from the list after the next fetch.
+                              } finally {
+                                setSearchingStart(false);
+                                suppressStartSuggestionFetchRef.current = false;
+                              }
+                            })();
+                            return;
+                          }
+
                           setTripStartAddress(value);
                           setSelectedStartAddress(null);
                         }}
@@ -1326,25 +1472,7 @@ export default function App() {
                                 isSelectingSuggestionRef.current = true;
                               }}
                               onPress={() => {
-                                void (async () => {
-                                  // Optimistically apply the selected label so tap always feels responsive.
-                                  setTripStartAddress(suggestion.label);
-                                  setSelectedStartAddress(suggestion);
-                                  try {
-                                    const resolved = await resolveAddressByPlaceId(suggestion.id);
-                                    if (resolved) {
-                                      setTripStartAddress(resolved.label);
-                                      setSelectedStartAddress(resolved);
-                                    }
-                                  } catch {
-                                    // Keep optimistic label; final coordinates are validated on save.
-                                  } finally {
-                                    isSelectingSuggestionRef.current = false;
-                                    setStartSuggestions([]);
-                                    setIsStartInputFocused(false);
-                                    Keyboard.dismiss();
-                                  }
-                                })();
+                                applyStartFromSuggestion(suggestion, 'list');
                               }}
                             >
                               <Text style={styles.suggestionText}>{suggestion.label}</Text>
@@ -1366,6 +1494,40 @@ export default function App() {
                         style={styles.input}
                         value={tripDestinationAddress}
                         onChangeText={(value) => {
+                          const prev = prevDestinationAddressForImeRef.current;
+                          prevDestinationAddressForImeRef.current = value;
+                          const trimmed = value.trim();
+
+                          const exact = destinationSuggestions.find((s) => s.label.trim() === trimmed);
+                          if (exact) {
+                            applyDestinationFromSuggestion(exact, 'inline', value);
+                            return;
+                          }
+
+                          if (isLikelyImeAddressCommit(prev, value)) {
+                            suppressDestinationSuggestionFetchRef.current = true;
+                            setTripDestinationAddress(value);
+                            setSelectedDestinationAddress(null);
+                            setDestinationSuggestions([]);
+                            setSearchingDestination(true);
+                            void (async () => {
+                              try {
+                                const resolved = await resolveAddress(trimmed);
+                                if (resolved) {
+                                  setTripDestinationAddress(resolved.label);
+                                  setSelectedDestinationAddress(resolved);
+                                  prevDestinationAddressForImeRef.current = resolved.label;
+                                }
+                              } catch {
+                                // Leave text; user can pick from the list after the next fetch.
+                              } finally {
+                                setSearchingDestination(false);
+                                suppressDestinationSuggestionFetchRef.current = false;
+                              }
+                            })();
+                            return;
+                          }
+
                           setTripDestinationAddress(value);
                           setSelectedDestinationAddress(null);
                         }}
@@ -1399,25 +1561,7 @@ export default function App() {
                                 isSelectingSuggestionRef.current = true;
                               }}
                               onPress={() => {
-                                void (async () => {
-                                  // Optimistically apply the selected label so tap always feels responsive.
-                                  setTripDestinationAddress(suggestion.label);
-                                  setSelectedDestinationAddress(suggestion);
-                                  try {
-                                    const resolved = await resolveAddressByPlaceId(suggestion.id);
-                                    if (resolved) {
-                                      setTripDestinationAddress(resolved.label);
-                                      setSelectedDestinationAddress(resolved);
-                                    }
-                                  } catch {
-                                    // Keep optimistic label; final coordinates are validated on save.
-                                  } finally {
-                                    isSelectingSuggestionRef.current = false;
-                                    setDestinationSuggestions([]);
-                                    setIsDestinationInputFocused(false);
-                                    Keyboard.dismiss();
-                                  }
-                                })();
+                                applyDestinationFromSuggestion(suggestion, 'list');
                               }}
                             >
                               <Text style={styles.suggestionText}>{suggestion.label}</Text>

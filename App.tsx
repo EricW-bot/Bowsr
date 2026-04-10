@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
+import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import * as SystemUI from 'expo-system-ui';
 import { computeRankedStations, computeTripRankedStations } from './calculations';
@@ -129,8 +130,11 @@ export default function App() {
   const palette = useMemo(() => getPalette(themeMode), [themeMode]);
   const styles = useMemo(() => createThemedStyles(palette), [palette]);
   const isSettingsTabActive = activeTab === 'settings';
-  const bottomNavInset = Platform.OS === 'ios' ? 20 : 14;
-  const bottomNavHeight = 74 + bottomNavInset;
+  const bottomNavInset = Platform.OS === 'ios' ? 8 : 6;
+  const bottomNavHeight = 58 + bottomNavInset;
+  const statusBarInset = Math.max(Constants.statusBarHeight ?? 0, Platform.OS === 'android' ? 24 : 0);
+  const headerTopOffset = statusBarInset + 6;
+  const topHeaderHeight = headerTopOffset + 104;
   const canUseLiquidGlass = Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
   useEffect(() => {
@@ -1210,23 +1214,8 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} backgroundColor={palette.headerBg} />
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>OnlyFuel</Text>
-          <Text style={styles.subtitle}>{appMode === 'oneWay' ? 'One-way one-stop planner' : 'Round-trip nearby ranking'}</Text>
-          <View style={styles.summarySingleRow}>
-            <View style={styles.summaryChip}>
-              <Text style={styles.summaryChipText}>Fuel {fuelNeeded}L</Text>
-            </View>
-            <View style={styles.summaryChip}>
-              <Text style={styles.summaryChipText}>Type {appliedFuelType}</Text>
-            </View>
-            <View style={styles.summaryChip}>
-              <Text style={styles.summaryChipText}>Mode {appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
-            </View>
-          </View>
-        </View>
+      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} backgroundColor="transparent" />
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
 
         <Modal
           visible={!!mapStation}
@@ -1328,28 +1317,32 @@ export default function App() {
 
         {activeTab === 'prices' ? (
           errorMsg ? (
-            <View style={styles.centerBox}>
+            <View style={[styles.centerBox, { paddingTop: topHeaderHeight }]}>
               <Text style={styles.errorText}>{errorMsg}</Text>
             </View>
           ) : loading ? (
-            <View style={styles.centerBox}>
+            <View style={[styles.centerBox, { paddingTop: topHeaderHeight }]}>
               <ActivityIndicator size="large" color={palette.primaryMuted} />
               <Text style={styles.loadingText}>Calculating optimal routes...</Text>
             </View>
           ) : (
-            <PricesTab style={[styles.listContainer, { paddingBottom: bottomNavHeight + 12 }]}>
-              {rankedStations.length === 0 ? (
-                <Text style={styles.emptyText}>No stations available right now. Try recalculating.</Text>
-              ) : (
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={[styles.resultsListContent, { paddingBottom: bottomNavHeight + 6 }]}
-                >
-                  {rankedStations.map((item, index) => (
+            <PricesTab style={[styles.listContainer, { paddingTop: topHeaderHeight, paddingBottom: 0 }]}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={[
+                  styles.resultsListContent,
+                  rankedStations.length === 0 && styles.resultsListContentEmpty,
+                  { paddingBottom: bottomNavHeight + 8 }
+                ]}
+              >
+                {rankedStations.length === 0 ? (
+                  <Text style={styles.emptyText}>No stations available right now. Try recalculating.</Text>
+                ) : (
+                  rankedStations.map((item, index) => (
                     <React.Fragment key={`${item.code}-${index}`}>{renderItem({ item, index })}</React.Fragment>
-                  ))}
-                </ScrollView>
-              )}
+                  ))
+                )}
+              </ScrollView>
             </PricesTab>
           )
         ) : (
@@ -1361,17 +1354,12 @@ export default function App() {
             >
               <ScrollView
                 style={styles.settingsPageScroll}
-                contentContainerStyle={[styles.settingsPageContent, { paddingBottom: bottomNavHeight + 12 }]}
+                contentContainerStyle={[styles.settingsPageContent, { paddingTop: topHeaderHeight, paddingBottom: bottomNavHeight + 8 }]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="always"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 nestedScrollEnabled
               >
-              <View style={styles.settingsPageHeader}>
-                <Text style={styles.modalTitle}>Preferences</Text>
-                <Text style={styles.modalSubtitle}>Scroll to see all options.</Text>
-              </View>
-
               <View style={styles.settingsSection}>
                 <View style={styles.settingsSectionHeader}>
                   <Ionicons name="map-outline" size={16} color={palette.title} />
@@ -1671,6 +1659,33 @@ export default function App() {
             </KeyboardAvoidingView>
           </SettingsTab>
         )}
+
+        <View pointerEvents="box-none" style={[styles.headerOverlayContainer, { top: headerTopOffset }]}>
+          <View style={styles.headerPlainContent}>
+            {activeTab === 'prices' ? (
+              <>
+                <Text style={styles.title}>OnlyFuel</Text>
+                <Text style={styles.subtitle}>{appMode === 'oneWay' ? 'One-way one-stop planner' : 'Round-trip nearby ranking'}</Text>
+                <View style={styles.summarySingleRow}>
+                  <View style={styles.summaryChip}>
+                    <Text style={styles.summaryChipText}>Fuel {fuelNeeded}L</Text>
+                  </View>
+                  <View style={styles.summaryChip}>
+                    <Text style={styles.summaryChipText}>Type {appliedFuelType}</Text>
+                  </View>
+                  <View style={styles.summaryChip}>
+                    <Text style={styles.summaryChipText}>Mode {appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.title}>Preferences</Text>
+                <Text style={styles.subtitle}>Scroll to see all options.</Text>
+              </>
+            )}
+          </View>
+        </View>
 
         <FloatingBottomNav
           tabs={bottomNavTabs}

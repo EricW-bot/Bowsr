@@ -5,6 +5,7 @@ export type ThemeMode = 'light' | 'dark';
 type Palette = {
   bg: string;
   headerBg: string;
+  headerOverlayBg: string;
   headerBorder: string;
   title: string;
   subtitle: string;
@@ -54,6 +55,7 @@ type Palette = {
 const light: Palette = {
   bg: '#eef2f7',
   headerBg: '#eef2f7',
+  headerOverlayBg: 'rgba(238, 242, 247, 0.72)',
   headerBorder: '#dbe5ef',
   title: '#0f172a',
   subtitle: '#475569',
@@ -103,6 +105,7 @@ const light: Palette = {
 const dark: Palette = {
   bg: '#0f1419',
   headerBg: '#0f1419',
+  headerOverlayBg: 'rgba(15, 20, 25, 0.72)',
   headerBorder: '#2a3544',
   title: '#f1f5f9',
   subtitle: '#94a3b8',
@@ -161,9 +164,33 @@ export function createThemedStyles(c: Palette) {
     },
     header: {
       padding: 20,
-      paddingBottom: 18,
+      paddingBottom: 10,
       backgroundColor: c.headerBg,
       borderBottomWidth: 0
+    },
+    headerOverlayContainer: {
+      position: 'absolute',
+      top: 10,
+      left: 14,
+      right: 14,
+      zIndex: 20
+    },
+    headerPlainContent: {
+      paddingHorizontal: 2,
+      paddingVertical: 2
+    },
+    headerGlass: {
+      borderRadius: 18,
+      paddingHorizontal: 14,
+      paddingVertical: 12
+    },
+    headerFallback: {
+      borderRadius: 18,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      backgroundColor: c.headerOverlayBg,
+      borderWidth: 1,
+      borderColor: c.headerBorder
     },
     title: {
       fontSize: 28,
@@ -180,7 +207,7 @@ export function createThemedStyles(c: Palette) {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 8,
-      marginTop: 10
+      marginTop: 6
     },
     summaryChip: {
       borderWidth: 1,
@@ -222,6 +249,9 @@ export function createThemedStyles(c: Palette) {
     },
     resultsListContent: {
       paddingBottom: 6
+    },
+    resultsListContentEmpty: {
+      flexGrow: 1
     },
     emptyText: {
       marginTop: 24,
@@ -634,39 +664,42 @@ export function createThemedStyles(c: Palette) {
     },
     bottomNavOuter: {
       position: 'absolute',
-      left: 16,
-      right: 16,
+      alignSelf: 'center',
       bottom: 0
     },
     bottomNavGlass: {
-      minHeight: 74,
-      borderRadius: 26,
+      minHeight: 58,
+      minWidth: 224,
+      borderRadius: 20,
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-around',
-      paddingHorizontal: 16
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+      gap: 6
     },
     bottomNavFallback: {
-      minHeight: 74,
-      borderRadius: 26,
+      minHeight: 58,
+      minWidth: 224,
+      borderRadius: 20,
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-around',
-      paddingHorizontal: 16,
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+      gap: 6,
       borderWidth: 1,
       borderColor: c.iconButtonBorder,
-      backgroundColor: c.modalBg
+      backgroundColor: c.headerOverlayBg
     },
     bottomNavItem: {
-      minWidth: 92,
-      paddingVertical: 10,
-      paddingHorizontal: 10,
-      borderRadius: 18,
+      minWidth: 82,
+      paddingVertical: 8,
+      paddingHorizontal: 8,
+      borderRadius: 14,
       justifyContent: 'center',
       alignItems: 'center'
     },
     bottomNavItemSelected: {
-      backgroundColor: c.chipSelectedBg
+      backgroundColor: 'transparent'
     },
     bottomNavItemText: {
       marginTop: 4,

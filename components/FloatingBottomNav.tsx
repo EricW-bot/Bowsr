@@ -52,7 +52,13 @@ export function FloatingBottomNav({
 
   return (
     <View style={[styles.bottomNavOuter, { paddingBottom: bottomInset }]}>
-      {canUseLiquidGlass ? <GlassView style={styles.bottomNavGlass}>{buttons}</GlassView> : <View style={styles.bottomNavFallback}>{buttons}</View>}
+      {canUseLiquidGlass ? (
+        <GlassView style={styles.bottomNavGlass} glassEffectStyle="regular">
+          {buttons}
+        </GlassView>
+      ) : (
+        <View style={styles.bottomNavFallback}>{buttons}</View>
+      )}
     </View>
   );
 }

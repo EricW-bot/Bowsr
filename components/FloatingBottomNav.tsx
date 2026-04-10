@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TouchableOpacity, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Text, TouchableOpacity, View, useColorScheme, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassView } from 'expo-glass-effect';
 import type { AppTab, TabDefinition } from '../Interface';
@@ -34,7 +34,8 @@ export function FloatingBottomNav({
   unselectedColor,
   styles
 }: FloatingBottomNavProps) {
-  const selectedTextColor = '#000000';
+  const colorScheme = useColorScheme();
+  const selectedTextColor = colorScheme === 'dark' ? '#ffffff' : '#000000';
 
   const buttons = tabs.map((tab) => {
     const selected = activeTab === tab.key;

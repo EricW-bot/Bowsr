@@ -170,7 +170,7 @@ export function createThemedStyles(c: Palette) {
     },
     headerOverlayContainer: {
       position: 'absolute',
-      top: 10,
+      top: 20,
       left: 14,
       right: 14,
       zIndex: 20
@@ -402,10 +402,6 @@ export function createThemedStyles(c: Palette) {
     },
     settingsPageHeader: {
       paddingHorizontal: 4,
-      marginBottom: 4
-    },
-    settingsPageSaveWrap: {
-      marginTop: 6,
       marginBottom: 4
     },
     settingsSection: {

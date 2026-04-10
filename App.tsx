@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Linking,
   Platform,
+  type LayoutChangeEvent,
   useColorScheme
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,7 +37,7 @@ import type { AppMode, AppTab, Coordinates, FuelApiData, RankedStation, TabDefin
 import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
 import { createThemedStyles, getPalette } from './theme';
 import { runTripAlgorithmValidation } from './tripValidation';
-import { getErrorMessage, normalizeBrands, normalizeFuelType } from './helpers/utils';
+import { getErrorMessage, normalizeBrands, normalizeFuelType, sameOrderedStringArray } from './helpers/utils';
 import {
   buildExternalMapUrl,
   buildWebMapEmbedUrl,
@@ -71,6 +72,22 @@ type ExpoMapPolyline = {
   width?: number;
 };
 
+type SettingsSnapshot = {
+  appMode: AppMode;
+  useCurrentLocation: boolean;
+  fuelNeeded: string;
+  fuelEconomy: string;
+  fuelType: string;
+  selectedBrands: string[];
+  tripStartAddress: string;
+  tripDestinationAddress: string;
+};
+
+type SaveSettingsOptions = {
+  switchToPrices?: boolean;
+  silentValidation?: boolean;
+};
+
 /** One-shot text expansion typical of OS keyboard autocomplete or paste (not single-character typing). */
 function isLikelyImeAddressCommit(prev: string, value: string): boolean {
   const trimmed = value.trim();
@@ -91,6 +108,8 @@ export default function App() {
   const colorScheme = useColorScheme();
   const themeMode = colorScheme === 'dark' ? 'dark' : 'light';
   const [activeTab, setActiveTab] = useState<AppTab>('prices');
+  const [headerContentHeight, setHeaderContentHeight] = useState(84);
+  const [savedSettingsSnapshot, setSavedSettingsSnapshot] = useState<SettingsSnapshot | null>(null);
   const [appMode, setAppMode] = useState<AppMode>('roundTrip');
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [rankedStations, setRankedStations] = useState<RankedStation[]>([]);
@@ -119,6 +138,9 @@ export default function App() {
   const [roundTripRouteGeometry, setRoundTripRouteGeometry] = useState<Coordinates[] | null>(null);
   const isMountedRef = useRef(true);
   const isSelectingSuggestionRef = useRef(false);
+  const settingsAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settingsSaveInFlightRef = useRef(false);
+  const handleSaveSettingsRef = useRef<(options?: SaveSettingsOptions) => Promise<void>>(async () => {});
   const prevStartAddressForImeRef = useRef('');
   const prevDestinationAddressForImeRef = useRef('');
   const suppressStartSuggestionFetchRef = useRef(false);
@@ -134,7 +156,7 @@ export default function App() {
   const bottomNavHeight = 58 + bottomNavInset;
   const statusBarInset = Math.max(Constants.statusBarHeight ?? 0, Platform.OS === 'android' ? 24 : 0);
   const headerTopOffset = statusBarInset + 6;
-  const topHeaderHeight = headerTopOffset + 104;
+  const topHeaderHeight = headerTopOffset + headerContentHeight + 8;
   const canUseLiquidGlass = Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
   useEffect(() => {
@@ -589,6 +611,16 @@ export default function App() {
         setTripDestination(prefs.tripDestination);
         setTripStartAddress(prefs.tripStartAddress);
         setTripDestinationAddress(prefs.tripDestinationAddress);
+        setSavedSettingsSnapshot({
+          appMode: prefs.appMode,
+          useCurrentLocation: prefs.useCurrentLocation,
+          fuelNeeded: prefs.fuelNeeded.trim(),
+          fuelEconomy: prefs.fuelEconomy.trim(),
+          fuelType: fuelTypeNorm,
+          selectedBrands: brandsNorm,
+          tripStartAddress: prefs.tripStartAddress.trim(),
+          tripDestinationAddress: prefs.tripDestinationAddress.trim()
+        });
         prevStartAddressForImeRef.current = prefs.tripStartAddress;
         prevDestinationAddressForImeRef.current = prefs.tripDestinationAddress;
         setSelectedStartAddress(
@@ -703,7 +735,13 @@ export default function App() {
     };
   }, []);
 
-  const handleSaveSettings = async () => {
+  const handleSaveSettings = async (options: SaveSettingsOptions = {}) => {
+    const { switchToPrices = true, silentValidation = false } = options;
+    if (settingsSaveInFlightRef.current) {
+      return;
+    }
+    settingsSaveInFlightRef.current = true;
+
     const nextFuelType = normalizeFuelType(fuelType);
     const nextBrands = normalizeBrands(selectedBrands);
     setFuelType(nextFuelType);
@@ -717,8 +755,11 @@ export default function App() {
         ? getTripAddressMissingMessage(startAddress, destinationAddress, useCurrentLocation)
         : getRoundTripStartMissingMessage(startAddress, useCurrentLocation);
     if (missingMessage) {
-      setErrorMsg(missingMessage);
-      setLoading(false);
+      if (!silentValidation) {
+        setErrorMsg(missingMessage);
+        setLoading(false);
+      }
+      settingsSaveInFlightRef.current = false;
       return;
     }
     setErrorMsg(null);
@@ -729,15 +770,21 @@ export default function App() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          setErrorMsg('Location permission is required when "Use my location" is enabled.');
-          setLoading(false);
+          if (!silentValidation) {
+            setErrorMsg('Location permission is required when "Use my location" is enabled.');
+            setLoading(false);
+          }
+          settingsSaveInFlightRef.current = false;
           return;
         }
         resolvedUserLocation = await getCurrentLocationWithTimeout();
         setUserLocation(resolvedUserLocation);
       } catch (err) {
-        setErrorMsg(getErrorMessage(err, 'Could not get current location. Try again or use start address.'));
-        setLoading(false);
+        if (!silentValidation) {
+          setErrorMsg(getErrorMessage(err, 'Could not get current location. Try again or use start address.'));
+          setLoading(false);
+        }
+        settingsSaveInFlightRef.current = false;
         return;
       }
     }
@@ -781,8 +828,11 @@ export default function App() {
           selectedStartAddress && selectedStartAddress.label === startAddress ? selectedStartAddress : null
         );
         if (!resolvedStart) {
-          setErrorMsg('Please click a Start Address suggestion, then pick a valid result.');
-          setLoading(false);
+          if (!silentValidation) {
+            setErrorMsg('Please click a Start Address suggestion, then pick a valid result.');
+            setLoading(false);
+          }
+          settingsSaveInFlightRef.current = false;
           return;
         }
         setSelectedStartAddress(resolvedStart);
@@ -796,8 +846,11 @@ export default function App() {
             : null
         );
         if (!resolvedDestination) {
-          setErrorMsg('Please click a Destination Address suggestion, then pick a valid result.');
-          setLoading(false);
+          if (!silentValidation) {
+            setErrorMsg('Please click a Destination Address suggestion, then pick a valid result.');
+            setLoading(false);
+          }
+          settingsSaveInFlightRef.current = false;
           return;
         }
         setSelectedDestinationAddress(resolvedDestination);
@@ -817,18 +870,34 @@ export default function App() {
         tripStart: nextTripStart
       });
       setTripDestination(nextTripDestination);
+      setSavedSettingsSnapshot({
+        appMode,
+        useCurrentLocation,
+        fuelNeeded: fuelNeeded.trim(),
+        fuelEconomy: fuelEconomy.trim(),
+        fuelType: nextFuelType,
+        selectedBrands: nextBrands,
+        tripStartAddress: startAddress,
+        tripDestinationAddress: destinationAddress
+      });
     } catch (err) {
-      setErrorMsg(getErrorMessage(err, 'Address validation failed. Please try again.'));
-      setLoading(false);
+      if (!silentValidation) {
+        setErrorMsg(getErrorMessage(err, 'Address validation failed. Please try again.'));
+        setLoading(false);
+      }
+      settingsSaveInFlightRef.current = false;
       return;
     }
-    setActiveTab('prices');
+    if (switchToPrices) {
+      setActiveTab('prices');
+    }
     setIsStartInputFocused(false);
     setIsDestinationInputFocused(false);
     setStartSuggestions([]);
     setDestinationSuggestions([]);
 
     if (missingMessage) {
+      settingsSaveInFlightRef.current = false;
       return;
     }
 
@@ -851,7 +920,9 @@ export default function App() {
         nextBrands
       );
     }
+    settingsSaveInFlightRef.current = false;
   };
+  handleSaveSettingsRef.current = handleSaveSettings;
 
   const renderItem = ({ item, index }: { item: RankedStation; index: number }) => (
     <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={() => setMapStation(item)}>
@@ -1211,6 +1282,57 @@ export default function App() {
     { key: 'prices' as const, label: 'Prices', icon: 'pricetag-outline' as const },
     { key: 'settings' as const, label: 'Settings', icon: 'settings-outline' as const }
   ];
+
+  const handleHeaderLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+    if (Number.isFinite(nextHeight) && nextHeight > 0 && Math.abs(nextHeight - headerContentHeight) > 1) {
+      setHeaderContentHeight(nextHeight);
+    }
+  }, [headerContentHeight]);
+
+  const currentSettingsSnapshot = useMemo<SettingsSnapshot>(() => {
+    return {
+      appMode,
+      useCurrentLocation,
+      fuelNeeded: fuelNeeded.trim(),
+      fuelEconomy: fuelEconomy.trim(),
+      fuelType: normalizeFuelType(fuelType),
+      selectedBrands: normalizeBrands(selectedBrands),
+      tripStartAddress: tripStartAddress.trim(),
+      tripDestinationAddress: tripDestinationAddress.trim()
+    };
+  }, [appMode, useCurrentLocation, fuelNeeded, fuelEconomy, fuelType, selectedBrands, tripStartAddress, tripDestinationAddress]);
+
+  const hasPendingSettingsChanges = useMemo(() => {
+    if (!savedSettingsSnapshot) return false;
+    return !(
+      savedSettingsSnapshot.appMode === currentSettingsSnapshot.appMode &&
+      savedSettingsSnapshot.useCurrentLocation === currentSettingsSnapshot.useCurrentLocation &&
+      savedSettingsSnapshot.fuelNeeded === currentSettingsSnapshot.fuelNeeded &&
+      savedSettingsSnapshot.fuelEconomy === currentSettingsSnapshot.fuelEconomy &&
+      savedSettingsSnapshot.fuelType === currentSettingsSnapshot.fuelType &&
+      sameOrderedStringArray(savedSettingsSnapshot.selectedBrands, currentSettingsSnapshot.selectedBrands) &&
+      savedSettingsSnapshot.tripStartAddress === currentSettingsSnapshot.tripStartAddress &&
+      savedSettingsSnapshot.tripDestinationAddress === currentSettingsSnapshot.tripDestinationAddress
+    );
+  }, [savedSettingsSnapshot, currentSettingsSnapshot]);
+
+  useEffect(() => {
+    if (activeTab !== 'settings' || !hasPendingSettingsChanges || loading || settingsSaveInFlightRef.current) {
+      return;
+    }
+    if (settingsAutosaveTimerRef.current) {
+      clearTimeout(settingsAutosaveTimerRef.current);
+    }
+    settingsAutosaveTimerRef.current = setTimeout(() => {
+      void handleSaveSettingsRef.current({ switchToPrices: false, silentValidation: true });
+    }, 900);
+    return () => {
+      if (settingsAutosaveTimerRef.current) {
+        clearTimeout(settingsAutosaveTimerRef.current);
+      }
+    };
+  }, [activeTab, hasPendingSettingsChanges, loading]);
 
   return (
     <SafeAreaProvider>
@@ -1647,41 +1769,33 @@ export default function App() {
                 </View>
               </View>
 
-              <View style={styles.settingsPageSaveWrap}>
-                <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
-                  <View style={styles.saveButtonRow}>
-                    <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-                    <Text style={styles.saveButtonText}>Save & Recalculate</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
               </ScrollView>
             </KeyboardAvoidingView>
           </SettingsTab>
         )}
 
         <View pointerEvents="box-none" style={[styles.headerOverlayContainer, { top: headerTopOffset }]}>
-          <View style={styles.headerPlainContent}>
+          <View style={styles.headerPlainContent} onLayout={handleHeaderLayout}>
             {activeTab === 'prices' ? (
               <>
                 <Text style={styles.title}>OnlyFuel</Text>
                 <Text style={styles.subtitle}>{appMode === 'oneWay' ? 'One-way one-stop planner' : 'Round-trip nearby ranking'}</Text>
                 <View style={styles.summarySingleRow}>
                   <View style={styles.summaryChip}>
-                    <Text style={styles.summaryChipText}>Fuel {fuelNeeded}L</Text>
+                    <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
                   </View>
                   <View style={styles.summaryChip}>
-                    <Text style={styles.summaryChipText}>Type {appliedFuelType}</Text>
+                    <Text style={styles.summaryChipText}>{appliedFuelType}</Text>
                   </View>
                   <View style={styles.summaryChip}>
-                    <Text style={styles.summaryChipText}>Mode {appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
+                    <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
                   </View>
                 </View>
               </>
             ) : (
               <>
                 <Text style={styles.title}>Preferences</Text>
-                <Text style={styles.subtitle}>Scroll to see all options.</Text>
+                <Text style={styles.subtitle}>Scroll to see all options.{'\n'}Changes save automatically.</Text>
               </>
             )}
           </View>

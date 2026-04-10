@@ -53,7 +53,7 @@ type Palette = {
 
 const light: Palette = {
   bg: '#eef2f7',
-  headerBg: '#fbfdff',
+  headerBg: '#eef2f7',
   headerBorder: '#dbe5ef',
   title: '#0f172a',
   subtitle: '#475569',
@@ -102,7 +102,7 @@ const light: Palette = {
 
 const dark: Palette = {
   bg: '#0f1419',
-  headerBg: '#151b24',
+  headerBg: '#0f1419',
   headerBorder: '#2a3544',
   title: '#f1f5f9',
   subtitle: '#94a3b8',
@@ -163,38 +163,7 @@ export function createThemedStyles(c: Palette) {
       padding: 20,
       paddingBottom: 18,
       backgroundColor: c.headerBg,
-      borderBottomWidth: 1,
-      borderBottomColor: c.headerBorder
-    },
-    headerRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'stretch'
-    },
-    headerRowCompact: {
-      gap: 12
-    },
-    headerMain: {
-      flex: 1,
-      minWidth: 0,
-      paddingRight: 12
-    },
-    headerActionRail: {
-      marginLeft: 4,
-      paddingLeft: 10,
-      borderLeftWidth: 1,
-      borderLeftColor: c.headerBorder,
-      justifyContent: 'center'
-    },
-    headerActionRailCompact: {
-      marginLeft: 0,
-      paddingLeft: 0,
-      borderLeftWidth: 0
-    },
-    headerActions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8
+      borderBottomWidth: 0
     },
     title: {
       fontSize: 28,
@@ -207,14 +176,7 @@ export function createThemedStyles(c: Palette) {
       color: c.subtitle,
       marginTop: 6
     },
-    headerMetaRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: 8,
-      marginTop: 10
-    },
-    summaryRow: {
+    summarySingleRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 8,
@@ -233,57 +195,9 @@ export function createThemedStyles(c: Palette) {
       fontSize: 12,
       fontWeight: '600'
     },
-    routingChipLive: {
-      borderColor: c.routingLiveBorder,
-      backgroundColor: c.routingLiveBg
-    },
-    routingChipLiveText: {
-      color: c.routingLiveText
-    },
-    routingChipEstimated: {
-      borderColor: c.routingEstimatedBorder,
-      backgroundColor: c.routingEstimatedBg
-    },
-    routingChipEstimatedText: {
-      color: c.routingEstimatedText
-    },
-    routingChipContent: {
-      flexDirection: 'row',
-      alignItems: 'center'
-    },
-    routingLiveDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: '#22c55e',
-      marginRight: 6
-    },
-    fuelTypeBadge: {
-      backgroundColor: c.fuelBadgeBg,
-      borderColor: c.fuelBadgeBorder,
-      borderWidth: 1,
-      borderRadius: 999,
-      paddingHorizontal: 10,
-      paddingVertical: 4
-    },
-    fuelTypeBadgeText: {
-      color: c.fuelBadgeText,
-      fontSize: 12,
-      fontWeight: '700'
-    },
     metaHint: {
       fontSize: 12,
       color: c.metaHint
-    },
-    iconButton: {
-      width: 46,
-      height: 46,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: c.iconButtonBg,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: c.iconButtonBorder
     },
     centerBox: {
       flex: 1,
@@ -444,6 +358,25 @@ export function createThemedStyles(c: Palette) {
       flexGrow: 1,
       paddingBottom: 14,
       gap: 12
+    },
+    settingsPageWrap: {
+      flex: 1
+    },
+    settingsPageScroll: {
+      flex: 1,
+      paddingHorizontal: 16
+    },
+    settingsPageContent: {
+      paddingTop: 8,
+      gap: 14
+    },
+    settingsPageHeader: {
+      paddingHorizontal: 4,
+      marginBottom: 4
+    },
+    settingsPageSaveWrap: {
+      marginTop: 6,
+      marginBottom: 4
     },
     settingsSection: {
       borderWidth: 1,
@@ -698,6 +631,48 @@ export function createThemedStyles(c: Palette) {
       color: '#fff',
       fontSize: 16,
       fontWeight: '800'
+    },
+    bottomNavOuter: {
+      position: 'absolute',
+      left: 16,
+      right: 16,
+      bottom: 0
+    },
+    bottomNavGlass: {
+      minHeight: 74,
+      borderRadius: 26,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-around',
+      paddingHorizontal: 16
+    },
+    bottomNavFallback: {
+      minHeight: 74,
+      borderRadius: 26,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-around',
+      paddingHorizontal: 16,
+      borderWidth: 1,
+      borderColor: c.iconButtonBorder,
+      backgroundColor: c.modalBg
+    },
+    bottomNavItem: {
+      minWidth: 92,
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+      borderRadius: 18,
+      justifyContent: 'center',
+      alignItems: 'center'
+    },
+    bottomNavItemSelected: {
+      backgroundColor: c.chipSelectedBg
+    },
+    bottomNavItemText: {
+      marginTop: 4,
+      color: c.title,
+      fontSize: 12,
+      fontWeight: '700'
     },
     mapModalOverlay: {
       flex: 1,

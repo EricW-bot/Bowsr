@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  Animated,
   Text,
   View,
   ScrollView,
@@ -12,16 +11,16 @@ import {
   KeyboardAvoidingView,
   Linking,
   Platform,
-  useColorScheme,
-  useWindowDimensions
+  useColorScheme
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 import * as Location from 'expo-location';
 import * as SystemUI from 'expo-system-ui';
 import { computeRankedStations, computeTripRankedStations } from './calculations';
-import { beginRoutingSession, getRoutingSessionSource } from './routingClient';
+import { beginRoutingSession } from './routingClient';
 import {
   BRAND_OPTIONS,
   DEFAULT_FUEL_TYPE,
@@ -47,6 +46,10 @@ import {
 } from './appHelpers';
 import { getCurrentLocationWithTimeout } from './locationHelpers';
 import { fetchOneWayRouteGeometry, fetchRoundTripRouteGeometry } from './routeGeometryHelpers';
+import { FloatingBottomNav } from './components/FloatingBottomNav';
+import { PricesTab } from './tabs/PricesTab';
+import { SettingsTab } from './tabs/SettingsTab';
+import type { AppTab, TabDefinition } from './tabs/types';
 
 type ExpoMapMarker = {
   id: string;
@@ -87,13 +90,13 @@ function isLikelyImeAddressCommit(prev: string, value: string): boolean {
 export default function App() {
   const colorScheme = useColorScheme();
   const themeMode = colorScheme === 'dark' ? 'dark' : 'light';
+  const [activeTab, setActiveTab] = useState<AppTab>('prices');
   const [appMode, setAppMode] = useState<AppMode>('roundTrip');
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [rankedStations, setRankedStations] = useState<RankedStation[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
   const [fuelNeeded, setFuelNeeded] = useState('25');
   const [fuelEconomy, setFuelEconomy] = useState('10.0');
   const [fuelType, setFuelType] = useState(DEFAULT_FUEL_TYPE);
@@ -106,7 +109,6 @@ export default function App() {
   const [destinationSuggestions, setDestinationSuggestions] = useState<AddressSuggestion[]>([]);
   const [searchingStart, setSearchingStart] = useState(false);
   const [searchingDestination, setSearchingDestination] = useState(false);
-  const [routingSource, setRoutingSource] = useState<'live' | 'estimated'>('live');
   const [mapStation, setMapStation] = useState<RankedStation | null>(null);
   const [expoMapsModule, setExpoMapsModule] = useState<typeof import('expo-maps') | null>(null);
   const [isStartInputFocused, setIsStartInputFocused] = useState(false);
@@ -122,14 +124,15 @@ export default function App() {
   const suppressStartSuggestionFetchRef = useRef(false);
   const suppressDestinationSuggestionFetchRef = useRef(false);
   const latestRankingRequestIdRef = useRef(0);
-  const { width } = useWindowDimensions();
-  const isCompactHeader = width < 390;
-  const liveRoutingDotOpacity = useRef(new Animated.Value(1)).current;
   const AppleMapsView = expoMapsModule?.AppleMaps?.View;
   const GoogleMapsView = expoMapsModule?.GoogleMaps?.View;
 
   const palette = useMemo(() => getPalette(themeMode), [themeMode]);
   const styles = useMemo(() => createThemedStyles(palette), [palette]);
+  const isSettingsTabActive = activeTab === 'settings';
+  const bottomNavInset = Platform.OS === 'ios' ? 20 : 14;
+  const bottomNavHeight = 74 + bottomNavInset;
+  const canUseLiquidGlass = Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
   useEffect(() => {
     void SystemUI.setBackgroundColorAsync(palette.bg);
@@ -167,34 +170,6 @@ export default function App() {
       isMountedRef.current = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (routingSource !== 'live') {
-      liveRoutingDotOpacity.stopAnimation();
-      liveRoutingDotOpacity.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(liveRoutingDotOpacity, {
-          toValue: 0.25,
-          duration: 700,
-          useNativeDriver: true
-        }),
-        Animated.timing(liveRoutingDotOpacity, {
-          toValue: 1,
-          duration: 700,
-          useNativeDriver: true
-        })
-      ])
-    );
-    loop.start();
-    return () => {
-      loop.stop();
-      liveRoutingDotOpacity.stopAnimation();
-      liveRoutingDotOpacity.setValue(1);
-    };
-  }, [routingSource, liveRoutingDotOpacity]);
 
   const processAndRank = useCallback(
     async (data: FuelApiData, userLat: number, userLon: number, neededStr: string, economyStr: string): Promise<number> => {
@@ -249,7 +224,6 @@ export default function App() {
         if (rankedCount === -1) {
           return;
         }
-        setRoutingSource(getRoutingSessionSource());
         if (rankedCount === 0) {
           setLoading(false);
           setErrorMsg('No rankable stations were returned for that fuel type/radius. Existing results kept.');
@@ -387,8 +361,6 @@ export default function App() {
 
         setAppliedFuelType(normalizedFuelType);
         setErrorMsg(null);
-        setRoutingSource(getRoutingSessionSource());
-
         if (topStations.length > 0) {
           setRankedStations(topStations);
           setLoading(false);
@@ -487,7 +459,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const shouldFetchStartSuggestions =
-      showSettings && !useCurrentLocation && (Platform.OS !== 'web' || isStartInputFocused);
+      isSettingsTabActive && !useCurrentLocation && (Platform.OS !== 'web' || isStartInputFocused);
     if (!shouldFetchStartSuggestions) {
       setStartSuggestions([]);
       setSearchingStart(false);
@@ -537,12 +509,12 @@ export default function App() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [showSettings, useCurrentLocation, tripStartAddress, isStartInputFocused, selectedStartAddress]);
+  }, [isSettingsTabActive, useCurrentLocation, tripStartAddress, isStartInputFocused, selectedStartAddress]);
 
   useEffect(() => {
     let cancelled = false;
     const shouldFetchDestinationSuggestions =
-      showSettings && appMode === 'oneWay' && (Platform.OS !== 'web' || isDestinationInputFocused);
+      isSettingsTabActive && appMode === 'oneWay' && (Platform.OS !== 'web' || isDestinationInputFocused);
     if (!shouldFetchDestinationSuggestions) {
       setDestinationSuggestions([]);
       setSearchingDestination(false);
@@ -592,7 +564,7 @@ export default function App() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [showSettings, appMode, tripDestinationAddress, isDestinationInputFocused, selectedDestinationAddress]);
+  }, [isSettingsTabActive, appMode, tripDestinationAddress, isDestinationInputFocused, selectedDestinationAddress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -847,7 +819,7 @@ export default function App() {
       setLoading(false);
       return;
     }
-    setShowSettings(false);
+    setActiveTab('prices');
     setIsStartInputFocused(false);
     setIsDestinationInputFocused(false);
     setStartSuggestions([]);
@@ -1232,422 +1204,30 @@ export default function App() {
     };
   }, [appMode, mapStation, oneWayStartPoint, roundTripStartPoint, tripDestination]);
 
+  const bottomNavTabs: TabDefinition[] = [
+    { key: 'prices' as const, label: 'Prices', icon: 'pricetag-outline' as const },
+    { key: 'settings' as const, label: 'Settings', icon: 'settings-outline' as const }
+  ];
+
   return (
     <SafeAreaProvider>
-      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
+      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} backgroundColor={palette.headerBg} />
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <View style={[styles.headerRow, isCompactHeader && styles.headerRowCompact]}>
-            <View style={styles.headerMain}>
-              <Text style={styles.title}>OnlyFuel</Text>
-              <Text style={styles.subtitle}>{appMode === 'oneWay' ? 'One-way one-stop planner' : 'Round-trip nearby ranking'}</Text>
-              <View style={styles.headerMetaRow}>
-                <View style={styles.fuelTypeBadge}>
-                  <Text style={styles.fuelTypeBadgeText}>{appliedFuelType}</Text>
-                </View>
-                <View style={styles.summaryChip}>
-                  <Text style={styles.summaryChipText}>{useCurrentLocation ? 'Start: GPS' : 'Start: Address'}</Text>
-                </View>
-                <View style={styles.summaryChip}>
-                  <Text style={styles.summaryChipText}>
-                    {appMode === 'oneWay' ? 'Destination: Address' : `Nearby ${NEARBY_RADIUS_KM}km`}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryChip}>
-                  <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
-                </View>
-                <View style={styles.summaryChip}>
-                  <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
-                </View>
-                <View style={styles.summaryChip}>
-                  <Text style={styles.summaryChipText}>{fuelEconomy}L/100km</Text>
-                </View>
-                <View
-                  style={[
-                    styles.summaryChip,
-                    routingSource === 'estimated' ? styles.routingChipEstimated : styles.routingChipLive
-                  ]}
-                >
-                  <View style={styles.routingChipContent}>
-                    {routingSource === 'live' ? (
-                      <Animated.View style={[styles.routingLiveDot, { opacity: liveRoutingDotOpacity }]} />
-                    ) : null}
-                    <Text
-                      style={[
-                        styles.summaryChipText,
-                        routingSource === 'estimated' ? styles.routingChipEstimatedText : styles.routingChipLiveText
-                      ]}
-                    >
-                      Routing: {routingSource === 'estimated' ? 'Estimated' : 'Live'}
-                    </Text>
-                  </View>
-                </View>
-              </View>
+          <Text style={styles.title}>OnlyFuel</Text>
+          <Text style={styles.subtitle}>{appMode === 'oneWay' ? 'One-way one-stop planner' : 'Round-trip nearby ranking'}</Text>
+          <View style={styles.summarySingleRow}>
+            <View style={styles.summaryChip}>
+              <Text style={styles.summaryChipText}>Fuel {fuelNeeded}L</Text>
             </View>
-            <View style={[styles.headerActionRail, isCompactHeader && styles.headerActionRailCompact]}>
-              <View style={styles.headerActions}>
-                <TouchableOpacity
-                  onPress={() => setShowSettings(true)}
-                  style={styles.iconButton}
-                  accessibilityRole="button"
-                  accessibilityLabel="Open settings"
-                >
-                  <Ionicons name="settings-outline" size={22} color={palette.title} />
-                </TouchableOpacity>
-              </View>
+            <View style={styles.summaryChip}>
+              <Text style={styles.summaryChipText}>Type {appliedFuelType}</Text>
+            </View>
+            <View style={styles.summaryChip}>
+              <Text style={styles.summaryChipText}>Mode {appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
             </View>
           </View>
         </View>
-
-        <Modal
-          visible={showSettings}
-          animationType="slide"
-          transparent={true}
-          presentationStyle="overFullScreen"
-          onRequestClose={() => setShowSettings(false)}
-        >
-            <View style={styles.modalOverlay}>
-              <TouchableOpacity
-                style={styles.modalBackdrop}
-                activeOpacity={1}
-                onPress={() => setShowSettings(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Close settings"
-              />
-                <KeyboardAvoidingView
-                  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                  keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
-                  style={styles.modalKeyboardWrap}
-                >
-                <View style={styles.modalContent}>
-                  <View style={styles.modalHandle} />
-                  <View style={styles.modalHeaderRow}>
-                    <Ionicons name="settings-outline" size={20} color={palette.title} />
-                    <View style={styles.modalTitleWrap}>
-                      <Text style={styles.modalTitle}>Settings</Text>
-                      <Text style={styles.modalSubtitle}>Tune trip mode, addresses, and vehicle preferences.</Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => setShowSettings(false)}
-                      style={styles.modalCloseButton}
-                      accessibilityRole="button"
-                      accessibilityLabel="Close settings"
-                    >
-                      <Ionicons name="close" size={20} color={palette.modalTitle} />
-                    </TouchableOpacity>
-                  </View>
-                  <ScrollView
-                    style={styles.modalScroll}
-                    contentContainerStyle={styles.modalScrollContent}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="always"
-                    keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-                    nestedScrollEnabled
-                  >
-                  <View style={styles.settingsSection}>
-                  <View style={styles.settingsSectionHeader}>
-                    <Ionicons name="map-outline" size={16} color={palette.title} />
-                    <Text style={styles.settingsSectionTitle}>Trip Mode</Text>
-                  </View>
-                  <Text style={styles.inputLabel}>Mode</Text>
-                  <View style={styles.modeCardRow}>
-                    {(['roundTrip', 'oneWay'] as AppMode[]).map((modeOption) => {
-                      const selected = appMode === modeOption;
-                      return (
-                        <TouchableOpacity
-                          key={modeOption}
-                          style={[styles.modeCard, selected && styles.modeCardSelected]}
-                          onPress={() => setAppMode(modeOption)}
-                        >
-                          <Ionicons
-                            name={modeOption === 'roundTrip' ? 'repeat-outline' : 'navigate-outline'}
-                            size={18}
-                            color={selected ? palette.chipTextSelected : palette.chipText}
-                          />
-                          <Text style={[styles.modeCardTitle, selected && styles.fuelTypeChipTextSelected]}>
-                            {modeOption === 'roundTrip' ? 'Round-trip' : 'One-way'}
-                          </Text>
-                          <Text style={[styles.modeCardHint, selected && styles.fuelTypeChipTextSelected]}>
-                            {modeOption === 'roundTrip' ? 'Nearby station ranking' : 'Route-aware stop planning'}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  <Text style={styles.inputLabel}>Start Point Source</Text>
-                  <View style={styles.sourceToggleRow}>
-                    {[true, false].map((option) => {
-                      const selected = useCurrentLocation === option;
-                      return (
-                        <TouchableOpacity
-                          key={option ? 'use-location' : 'use-addresses'}
-                          style={[styles.sourceToggleButton, selected && styles.sourceToggleButtonSelected]}
-                          onPress={() => setUseCurrentLocation(option)}
-                        >
-                          <Text style={[styles.sourceToggleText, selected && styles.sourceToggleTextSelected]}>
-                            {option ? "Use my location" : 'Use start address'}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  </View>
-
-                  {!useCurrentLocation ? (
-                    <View style={styles.settingsSection}>
-                      <View style={styles.settingsSectionHeader}>
-                        <Ionicons name="pin-outline" size={16} color={palette.title} />
-                        <Text style={styles.settingsSectionTitle}>Start Address</Text>
-                      </View>
-                      <Text style={styles.inputLabel}>Start Address</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={tripStartAddress}
-                        onChangeText={(value) => {
-                          const prev = prevStartAddressForImeRef.current;
-                          prevStartAddressForImeRef.current = value;
-                          const trimmed = value.trim();
-
-                          const exact = startSuggestions.find((s) => s.label.trim() === trimmed);
-                          if (exact) {
-                            applyStartFromSuggestion(exact, 'inline', value);
-                            return;
-                          }
-
-                          if (isLikelyImeAddressCommit(prev, value)) {
-                            suppressStartSuggestionFetchRef.current = true;
-                            setTripStartAddress(value);
-                            setSelectedStartAddress(null);
-                            setStartSuggestions([]);
-                            setSearchingStart(true);
-                            void (async () => {
-                              try {
-                                const resolved = await resolveAddress(trimmed);
-                                if (resolved) {
-                                  setTripStartAddress(resolved.label);
-                                  setSelectedStartAddress(resolved);
-                                  prevStartAddressForImeRef.current = resolved.label;
-                                }
-                              } catch {
-                                // Leave text; user can pick from the list after the next fetch.
-                              } finally {
-                                setSearchingStart(false);
-                                suppressStartSuggestionFetchRef.current = false;
-                              }
-                            })();
-                            return;
-                          }
-
-                          setTripStartAddress(value);
-                          setSelectedStartAddress(null);
-                        }}
-                        onFocus={() => setIsStartInputFocused(true)}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            if (isSelectingSuggestionRef.current) {
-                              return;
-                            }
-                            setIsStartInputFocused(false);
-                          }, Platform.OS === 'web' ? 220 : 120);
-                        }}
-                        placeholder="Enter start address"
-                        placeholderTextColor={palette.placeholder}
-                      />
-                      {searchingStart ? <Text style={styles.metaHint}>Searching addresses...</Text> : null}
-                      <View style={[styles.addressStatusPill, startAddressSelected && styles.addressStatusPillOk]}>
-                        <Text style={[styles.addressStatusText, startAddressSelected && styles.addressStatusTextOk]}>
-                          {startStatusText}
-                        </Text>
-                      </View>
-                      {startSuggestions.length > 0 && (Platform.OS !== 'web' || isStartInputFocused) ? (
-                        <View style={styles.suggestionsList}>
-                          {startSuggestions.map((suggestion) => (
-                            <TouchableOpacity
-                                  key={`start-${suggestion.id}`}
-                              style={styles.suggestionItem}
-                              onPressIn={() => {
-                                isSelectingSuggestionRef.current = true;
-                              }}
-                              onPress={() => {
-                                applyStartFromSuggestion(suggestion, 'list');
-                              }}
-                            >
-                              <Text style={styles.suggestionText}>{suggestion.label}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : null}
-
-                  {appMode === 'oneWay' ? (
-                    <View style={styles.settingsSection}>
-                      <View style={styles.settingsSectionHeader}>
-                        <Ionicons name="flag-outline" size={16} color={palette.title} />
-                        <Text style={styles.settingsSectionTitle}>Destination</Text>
-                      </View>
-                      <Text style={styles.inputLabel}>Destination Address</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={tripDestinationAddress}
-                        onChangeText={(value) => {
-                          const prev = prevDestinationAddressForImeRef.current;
-                          prevDestinationAddressForImeRef.current = value;
-                          const trimmed = value.trim();
-
-                          const exact = destinationSuggestions.find((s) => s.label.trim() === trimmed);
-                          if (exact) {
-                            applyDestinationFromSuggestion(exact, 'inline', value);
-                            return;
-                          }
-
-                          if (isLikelyImeAddressCommit(prev, value)) {
-                            suppressDestinationSuggestionFetchRef.current = true;
-                            setTripDestinationAddress(value);
-                            setSelectedDestinationAddress(null);
-                            setDestinationSuggestions([]);
-                            setSearchingDestination(true);
-                            void (async () => {
-                              try {
-                                const resolved = await resolveAddress(trimmed);
-                                if (resolved) {
-                                  setTripDestinationAddress(resolved.label);
-                                  setSelectedDestinationAddress(resolved);
-                                  prevDestinationAddressForImeRef.current = resolved.label;
-                                }
-                              } catch {
-                                // Leave text; user can pick from the list after the next fetch.
-                              } finally {
-                                setSearchingDestination(false);
-                                suppressDestinationSuggestionFetchRef.current = false;
-                              }
-                            })();
-                            return;
-                          }
-
-                          setTripDestinationAddress(value);
-                          setSelectedDestinationAddress(null);
-                        }}
-                        onFocus={() => setIsDestinationInputFocused(true)}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            if (isSelectingSuggestionRef.current) {
-                              return;
-                            }
-                            setIsDestinationInputFocused(false);
-                          }, Platform.OS === 'web' ? 220 : 120);
-                        }}
-                        placeholder="Enter destination address"
-                        placeholderTextColor={palette.placeholder}
-                      />
-                      {searchingDestination ? <Text style={styles.metaHint}>Searching addresses...</Text> : null}
-                      {destinationStatusText ? (
-                        <View style={[styles.addressStatusPill, destinationAddressSelected && styles.addressStatusPillOk]}>
-                          <Text style={[styles.addressStatusText, destinationAddressSelected && styles.addressStatusTextOk]}>
-                            {destinationStatusText}
-                          </Text>
-                        </View>
-                      ) : null}
-                      {destinationSuggestions.length > 0 && (Platform.OS !== 'web' || isDestinationInputFocused) ? (
-                        <View style={styles.suggestionsList}>
-                          {destinationSuggestions.map((suggestion) => (
-                            <TouchableOpacity
-                              key={`dest-${suggestion.id}`}
-                              style={styles.suggestionItem}
-                              onPressIn={() => {
-                                isSelectingSuggestionRef.current = true;
-                              }}
-                              onPress={() => {
-                                applyDestinationFromSuggestion(suggestion, 'list');
-                              }}
-                            >
-                              <Text style={styles.suggestionText}>{suggestion.label}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : null}
-
-                  <View style={styles.settingsSection}>
-                  <View style={styles.settingsSectionHeader}>
-                    <Ionicons name="car-sport-outline" size={16} color={palette.title} />
-                    <Text style={styles.settingsSectionTitle}>Vehicle & Fuel</Text>
-                  </View>
-                  <View style={styles.inlineInputsRow}>
-                    <View style={styles.inlineInputCol}>
-                      <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Needed (Litres)</Text>
-                      <TextInput
-                        style={styles.inlineInput}
-                        keyboardType="numeric"
-                        value={fuelNeeded}
-                        onChangeText={setFuelNeeded}
-                        placeholder="e.g. 50"
-                        placeholderTextColor={palette.placeholder}
-                      />
-                    </View>
-                    <View style={styles.inlineInputCol}>
-                      <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Economy (L/100km)</Text>
-                      <TextInput
-                        style={styles.inlineInput}
-                        keyboardType="numeric"
-                        value={fuelEconomy}
-                        onChangeText={setFuelEconomy}
-                        placeholder="e.g. 8.0"
-                        placeholderTextColor={palette.placeholder}
-                      />
-                    </View>
-                  </View>
-
-                  <Text style={styles.inputLabel}>Fuel Type</Text>
-                  <View style={styles.fuelTypeRow}>
-                    {FUEL_TYPE_OPTIONS.map((option) => {
-                      const selected = fuelType === option;
-                      return (
-                        <TouchableOpacity
-                          key={option}
-                          style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
-                          onPress={() => setFuelType(option)}
-                        >
-                          <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>{option}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  <Text style={styles.inputLabel}>Brands (Optional)</Text>
-                  <View style={styles.fuelTypeRow}>
-                    {BRAND_OPTIONS.map((option) => {
-                      const selected = selectedBrands.includes(option);
-                      return (
-                        <TouchableOpacity
-                          key={option}
-                          style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
-                          onPress={() => toggleBrandSelection(option)}
-                        >
-                          <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>{option}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  </View>
-
-                  </ScrollView>
-                  <View style={styles.modalFooter}>
-                    <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
-                      <View style={styles.saveButtonRow}>
-                        <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-                        <Text style={styles.saveButtonText}>Save & Recalculate</Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                </KeyboardAvoidingView>
-            </View>
-        </Modal>
 
         <Modal
           visible={!!mapStation}
@@ -1747,28 +1327,362 @@ export default function App() {
           </View>
         </Modal>
 
-        {errorMsg ? (
-          <View style={styles.centerBox}>
-            <Text style={styles.errorText}>{errorMsg}</Text>
-          </View>
-        ) : loading ? (
-          <View style={styles.centerBox}>
-            <ActivityIndicator size="large" color={palette.primaryMuted} />
-            <Text style={styles.loadingText}>Calculating optimal routes...</Text>
-          </View>
+        {activeTab === 'prices' ? (
+          errorMsg ? (
+            <View style={styles.centerBox}>
+              <Text style={styles.errorText}>{errorMsg}</Text>
+            </View>
+          ) : loading ? (
+            <View style={styles.centerBox}>
+              <ActivityIndicator size="large" color={palette.primaryMuted} />
+              <Text style={styles.loadingText}>Calculating optimal routes...</Text>
+            </View>
+          ) : (
+            <PricesTab style={[styles.listContainer, { paddingBottom: bottomNavHeight + 12 }]}>
+              {rankedStations.length === 0 ? (
+                <Text style={styles.emptyText}>No stations available right now. Try recalculating.</Text>
+              ) : (
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={[styles.resultsListContent, { paddingBottom: bottomNavHeight + 6 }]}
+                >
+                  {rankedStations.map((item, index) => (
+                    <React.Fragment key={`${item.code}-${index}`}>{renderItem({ item, index })}</React.Fragment>
+                  ))}
+                </ScrollView>
+              )}
+            </PricesTab>
+          )
         ) : (
-          <View style={styles.listContainer}>
-            {rankedStations.length === 0 ? (
-              <Text style={styles.emptyText}>No stations available right now. Try recalculating.</Text>
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.resultsListContent}>
-                {rankedStations.map((item, index) => (
-                  <React.Fragment key={`${item.code}-${index}`}>{renderItem({ item, index })}</React.Fragment>
-                ))}
+          <SettingsTab style={styles.settingsPageWrap}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+              style={styles.settingsPageWrap}
+            >
+              <ScrollView
+                style={styles.settingsPageScroll}
+                contentContainerStyle={[styles.settingsPageContent, { paddingBottom: bottomNavHeight + 12 }]}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="always"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                nestedScrollEnabled
+              >
+              <View style={styles.settingsPageHeader}>
+                <Text style={styles.modalTitle}>Preferences</Text>
+                <Text style={styles.modalSubtitle}>Scroll to see all options.</Text>
+              </View>
+
+              <View style={styles.settingsSection}>
+                <View style={styles.settingsSectionHeader}>
+                  <Ionicons name="map-outline" size={16} color={palette.title} />
+                  <Text style={styles.settingsSectionTitle}>Trip Mode</Text>
+                </View>
+                <Text style={styles.inputLabel}>Mode</Text>
+                <View style={styles.modeCardRow}>
+                  {(['roundTrip', 'oneWay'] as AppMode[]).map((modeOption) => {
+                    const selected = appMode === modeOption;
+                    return (
+                      <TouchableOpacity
+                        key={modeOption}
+                        style={[styles.modeCard, selected && styles.modeCardSelected]}
+                        onPress={() => setAppMode(modeOption)}
+                      >
+                        <Ionicons
+                          name={modeOption === 'roundTrip' ? 'repeat-outline' : 'navigate-outline'}
+                          size={18}
+                          color={selected ? palette.chipTextSelected : palette.chipText}
+                        />
+                        <Text style={[styles.modeCardTitle, selected && styles.fuelTypeChipTextSelected]}>
+                          {modeOption === 'roundTrip' ? 'Round-trip' : 'One-way'}
+                        </Text>
+                        <Text style={[styles.modeCardHint, selected && styles.fuelTypeChipTextSelected]}>
+                          {modeOption === 'roundTrip' ? 'Nearby station ranking' : 'Route-aware stop planning'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.inputLabel}>Start Point Source</Text>
+                <View style={styles.sourceToggleRow}>
+                  {[true, false].map((option) => {
+                    const selected = useCurrentLocation === option;
+                    return (
+                      <TouchableOpacity
+                        key={option ? 'use-location' : 'use-addresses'}
+                        style={[styles.sourceToggleButton, selected && styles.sourceToggleButtonSelected]}
+                        onPress={() => setUseCurrentLocation(option)}
+                      >
+                        <Text style={[styles.sourceToggleText, selected && styles.sourceToggleTextSelected]}>
+                          {option ? 'Use my location' : 'Use start address'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {!useCurrentLocation ? (
+                <View style={styles.settingsSection}>
+                  <View style={styles.settingsSectionHeader}>
+                    <Ionicons name="pin-outline" size={16} color={palette.title} />
+                    <Text style={styles.settingsSectionTitle}>Start Address</Text>
+                  </View>
+                  <Text style={styles.inputLabel}>Start Address</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={tripStartAddress}
+                    onChangeText={(value) => {
+                      const prev = prevStartAddressForImeRef.current;
+                      prevStartAddressForImeRef.current = value;
+                      const trimmed = value.trim();
+
+                      const exact = startSuggestions.find((s) => s.label.trim() === trimmed);
+                      if (exact) {
+                        applyStartFromSuggestion(exact, 'inline', value);
+                        return;
+                      }
+
+                      if (isLikelyImeAddressCommit(prev, value)) {
+                        suppressStartSuggestionFetchRef.current = true;
+                        setTripStartAddress(value);
+                        setSelectedStartAddress(null);
+                        setStartSuggestions([]);
+                        setSearchingStart(true);
+                        void (async () => {
+                          try {
+                            const resolved = await resolveAddress(trimmed);
+                            if (resolved) {
+                              setTripStartAddress(resolved.label);
+                              setSelectedStartAddress(resolved);
+                              prevStartAddressForImeRef.current = resolved.label;
+                            }
+                          } catch {
+                            // Leave text; user can pick from the list after the next fetch.
+                          } finally {
+                            setSearchingStart(false);
+                            suppressStartSuggestionFetchRef.current = false;
+                          }
+                        })();
+                        return;
+                      }
+
+                      setTripStartAddress(value);
+                      setSelectedStartAddress(null);
+                    }}
+                    onFocus={() => setIsStartInputFocused(true)}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        if (isSelectingSuggestionRef.current) {
+                          return;
+                        }
+                        setIsStartInputFocused(false);
+                      }, Platform.OS === 'web' ? 220 : 120);
+                    }}
+                    placeholder="Enter start address"
+                    placeholderTextColor={palette.placeholder}
+                  />
+                  {searchingStart ? <Text style={styles.metaHint}>Searching addresses...</Text> : null}
+                  <View style={[styles.addressStatusPill, startAddressSelected && styles.addressStatusPillOk]}>
+                    <Text style={[styles.addressStatusText, startAddressSelected && styles.addressStatusTextOk]}>{startStatusText}</Text>
+                  </View>
+                  {startSuggestions.length > 0 && (Platform.OS !== 'web' || isStartInputFocused) ? (
+                    <View style={styles.suggestionsList}>
+                      {startSuggestions.map((suggestion) => (
+                        <TouchableOpacity
+                          key={`start-${suggestion.id}`}
+                          style={styles.suggestionItem}
+                          onPressIn={() => {
+                            isSelectingSuggestionRef.current = true;
+                          }}
+                          onPress={() => {
+                            applyStartFromSuggestion(suggestion, 'list');
+                          }}
+                        >
+                          <Text style={styles.suggestionText}>{suggestion.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {appMode === 'oneWay' ? (
+                <View style={styles.settingsSection}>
+                  <View style={styles.settingsSectionHeader}>
+                    <Ionicons name="flag-outline" size={16} color={palette.title} />
+                    <Text style={styles.settingsSectionTitle}>Destination</Text>
+                  </View>
+                  <Text style={styles.inputLabel}>Destination Address</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={tripDestinationAddress}
+                    onChangeText={(value) => {
+                      const prev = prevDestinationAddressForImeRef.current;
+                      prevDestinationAddressForImeRef.current = value;
+                      const trimmed = value.trim();
+
+                      const exact = destinationSuggestions.find((s) => s.label.trim() === trimmed);
+                      if (exact) {
+                        applyDestinationFromSuggestion(exact, 'inline', value);
+                        return;
+                      }
+
+                      if (isLikelyImeAddressCommit(prev, value)) {
+                        suppressDestinationSuggestionFetchRef.current = true;
+                        setTripDestinationAddress(value);
+                        setSelectedDestinationAddress(null);
+                        setDestinationSuggestions([]);
+                        setSearchingDestination(true);
+                        void (async () => {
+                          try {
+                            const resolved = await resolveAddress(trimmed);
+                            if (resolved) {
+                              setTripDestinationAddress(resolved.label);
+                              setSelectedDestinationAddress(resolved);
+                              prevDestinationAddressForImeRef.current = resolved.label;
+                            }
+                          } catch {
+                            // Leave text; user can pick from the list after the next fetch.
+                          } finally {
+                            setSearchingDestination(false);
+                            suppressDestinationSuggestionFetchRef.current = false;
+                          }
+                        })();
+                        return;
+                      }
+
+                      setTripDestinationAddress(value);
+                      setSelectedDestinationAddress(null);
+                    }}
+                    onFocus={() => setIsDestinationInputFocused(true)}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        if (isSelectingSuggestionRef.current) {
+                          return;
+                        }
+                        setIsDestinationInputFocused(false);
+                      }, Platform.OS === 'web' ? 220 : 120);
+                    }}
+                    placeholder="Enter destination address"
+                    placeholderTextColor={palette.placeholder}
+                  />
+                  {searchingDestination ? <Text style={styles.metaHint}>Searching addresses...</Text> : null}
+                  {destinationStatusText ? (
+                    <View style={[styles.addressStatusPill, destinationAddressSelected && styles.addressStatusPillOk]}>
+                      <Text style={[styles.addressStatusText, destinationAddressSelected && styles.addressStatusTextOk]}>
+                        {destinationStatusText}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {destinationSuggestions.length > 0 && (Platform.OS !== 'web' || isDestinationInputFocused) ? (
+                    <View style={styles.suggestionsList}>
+                      {destinationSuggestions.map((suggestion) => (
+                        <TouchableOpacity
+                          key={`dest-${suggestion.id}`}
+                          style={styles.suggestionItem}
+                          onPressIn={() => {
+                            isSelectingSuggestionRef.current = true;
+                          }}
+                          onPress={() => {
+                            applyDestinationFromSuggestion(suggestion, 'list');
+                          }}
+                        >
+                          <Text style={styles.suggestionText}>{suggestion.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <View style={styles.settingsSection}>
+                <View style={styles.settingsSectionHeader}>
+                  <Ionicons name="car-sport-outline" size={16} color={palette.title} />
+                  <Text style={styles.settingsSectionTitle}>Vehicle & Fuel</Text>
+                </View>
+                <View style={styles.inlineInputsRow}>
+                  <View style={styles.inlineInputCol}>
+                    <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Needed (Litres)</Text>
+                    <TextInput
+                      style={styles.inlineInput}
+                      keyboardType="numeric"
+                      value={fuelNeeded}
+                      onChangeText={setFuelNeeded}
+                      placeholder="e.g. 50"
+                      placeholderTextColor={palette.placeholder}
+                    />
+                  </View>
+                  <View style={styles.inlineInputCol}>
+                    <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Economy (L/100km)</Text>
+                    <TextInput
+                      style={styles.inlineInput}
+                      keyboardType="numeric"
+                      value={fuelEconomy}
+                      onChangeText={setFuelEconomy}
+                      placeholder="e.g. 8.0"
+                      placeholderTextColor={palette.placeholder}
+                    />
+                  </View>
+                </View>
+
+                <Text style={styles.inputLabel}>Fuel Type</Text>
+                <View style={styles.fuelTypeRow}>
+                  {FUEL_TYPE_OPTIONS.map((option) => {
+                    const selected = fuelType === option;
+                    return (
+                      <TouchableOpacity
+                        key={option}
+                        style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
+                        onPress={() => setFuelType(option)}
+                      >
+                        <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>{option}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.inputLabel}>Brands (Optional)</Text>
+                <View style={styles.fuelTypeRow}>
+                  {BRAND_OPTIONS.map((option) => {
+                    const selected = selectedBrands.includes(option);
+                    return (
+                      <TouchableOpacity
+                        key={option}
+                        style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
+                        onPress={() => toggleBrandSelection(option)}
+                      >
+                        <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>{option}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.settingsPageSaveWrap}>
+                <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
+                  <View style={styles.saveButtonRow}>
+                    <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                    <Text style={styles.saveButtonText}>Save & Recalculate</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
               </ScrollView>
-            )}
-          </View>
+            </KeyboardAvoidingView>
+          </SettingsTab>
         )}
+
+        <FloatingBottomNav
+          tabs={bottomNavTabs}
+          activeTab={activeTab}
+          onTabPress={setActiveTab}
+          canUseLiquidGlass={canUseLiquidGlass}
+          bottomInset={bottomNavInset}
+          selectedColor={palette.primary}
+          unselectedColor={palette.metaHint}
+          styles={styles}
+        />
       </SafeAreaView>
     </SafeAreaProvider>
   );

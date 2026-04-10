@@ -83,11 +83,6 @@ type SettingsSnapshot = {
   tripDestinationAddress: string;
 };
 
-type SaveSettingsOptions = {
-  switchToPrices?: boolean;
-  silentValidation?: boolean;
-};
-
 /** One-shot text expansion typical of OS keyboard autocomplete or paste (not single-character typing). */
 function isLikelyImeAddressCommit(prev: string, value: string): boolean {
   const trimmed = value.trim();
@@ -108,7 +103,10 @@ export default function App() {
   const colorScheme = useColorScheme();
   const themeMode = colorScheme === 'dark' ? 'dark' : 'light';
   const [activeTab, setActiveTab] = useState<AppTab>('prices');
-  const [headerContentHeight, setHeaderContentHeight] = useState(84);
+  const [headerContentHeights, setHeaderContentHeights] = useState<Record<AppTab, number>>({
+    prices: 84,
+    settings: 84
+  });
   const [savedSettingsSnapshot, setSavedSettingsSnapshot] = useState<SettingsSnapshot | null>(null);
   const [appMode, setAppMode] = useState<AppMode>('roundTrip');
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
@@ -154,7 +152,7 @@ export default function App() {
   const bottomNavHeight = 58 + bottomNavInset;
   const statusBarInset = Constants.statusBarHeight ?? 0;
   const headerTopOffset = statusBarInset;
-  const topHeaderHeight = headerTopOffset + headerContentHeight + 20;
+  const topHeaderHeight = headerTopOffset + (headerContentHeights[activeTab] ?? 84) + 20;
   const canUseLiquidGlass = Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
   useEffect(() => {
@@ -733,9 +731,8 @@ export default function App() {
     };
   }, []);
 
-  const handleSaveSettings = async (options: SaveSettingsOptions = {}) => {
-    const { switchToPrices = true, silentValidation = false } = options;
-    if (settingsSaveInFlightRef.current) {
+  const handleSaveSettings = async () => {
+    if (!hasPendingSettingsChanges || settingsSaveInFlightRef.current) {
       return;
     }
     settingsSaveInFlightRef.current = true;
@@ -753,10 +750,8 @@ export default function App() {
         ? getTripAddressMissingMessage(startAddress, destinationAddress, useCurrentLocation)
         : getRoundTripStartMissingMessage(startAddress, useCurrentLocation);
     if (missingMessage) {
-      if (!silentValidation) {
-        setErrorMsg(missingMessage);
-        setLoading(false);
-      }
+      setErrorMsg(missingMessage);
+      setLoading(false);
       settingsSaveInFlightRef.current = false;
       return;
     }
@@ -768,20 +763,16 @@ export default function App() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          if (!silentValidation) {
-            setErrorMsg('Location permission is required when "Use my location" is enabled.');
-            setLoading(false);
-          }
+          setErrorMsg('Location permission is required when "Use my location" is enabled.');
+          setLoading(false);
           settingsSaveInFlightRef.current = false;
           return;
         }
         resolvedUserLocation = await getCurrentLocationWithTimeout();
         setUserLocation(resolvedUserLocation);
       } catch (err) {
-        if (!silentValidation) {
-          setErrorMsg(getErrorMessage(err, 'Could not get current location. Try again or use start address.'));
-          setLoading(false);
-        }
+        setErrorMsg(getErrorMessage(err, 'Could not get current location. Try again or use start address.'));
+        setLoading(false);
         settingsSaveInFlightRef.current = false;
         return;
       }
@@ -826,10 +817,8 @@ export default function App() {
           selectedStartAddress && selectedStartAddress.label === startAddress ? selectedStartAddress : null
         );
         if (!resolvedStart) {
-          if (!silentValidation) {
-            setErrorMsg('Please click a Start Address suggestion, then pick a valid result.');
-            setLoading(false);
-          }
+          setErrorMsg('Please click a Start Address suggestion, then pick a valid result.');
+          setLoading(false);
           settingsSaveInFlightRef.current = false;
           return;
         }
@@ -844,10 +833,8 @@ export default function App() {
             : null
         );
         if (!resolvedDestination) {
-          if (!silentValidation) {
-            setErrorMsg('Please click a Destination Address suggestion, then pick a valid result.');
-            setLoading(false);
-          }
+          setErrorMsg('Please click a Destination Address suggestion, then pick a valid result.');
+          setLoading(false);
           settingsSaveInFlightRef.current = false;
           return;
         }
@@ -879,25 +866,16 @@ export default function App() {
         tripDestinationAddress: destinationAddress
       });
     } catch (err) {
-      if (!silentValidation) {
-        setErrorMsg(getErrorMessage(err, 'Address validation failed. Please try again.'));
-        setLoading(false);
-      }
+      setErrorMsg(getErrorMessage(err, 'Address validation failed. Please try again.'));
+      setLoading(false);
       settingsSaveInFlightRef.current = false;
       return;
     }
-    if (switchToPrices) {
-      setActiveTab('prices');
-    }
+    setActiveTab('prices');
     setIsStartInputFocused(false);
     setIsDestinationInputFocused(false);
     setStartSuggestions([]);
     setDestinationSuggestions([]);
-
-    if (missingMessage) {
-      settingsSaveInFlightRef.current = false;
-      return;
-    }
 
     if (appMode === 'oneWay') {
       fetchAndRankTripDataRef.current(
@@ -920,49 +898,66 @@ export default function App() {
     }
     settingsSaveInFlightRef.current = false;
   };
-  const renderItem = ({ item, index }: { item: RankedStation; index: number }) => (
-    <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={() => setMapStation(item)}>
-      <View style={styles.cardHeader}>
-        <View style={styles.rankBadge}>
-          <Text style={styles.rankText}>#{index + 1}</Text>
+  const renderItem = ({ item, index }: { item: RankedStation; index: number }) => {
+    const cardContent = (
+      <>
+        <View style={styles.cardHeader}>
+          <View style={styles.rankBadge}>
+            <Text style={styles.rankText}>#{index + 1}</Text>
+          </View>
+          <View style={styles.stationInfo}>
+            <Text style={styles.stationName}>{item.name}</Text>
+            <Text style={styles.stationAddress}>{item.address || 'Address unavailable'}</Text>
+          </View>
         </View>
-        <View style={styles.stationInfo}>
-          <Text style={styles.stationName}>{item.name}</Text>
-          <Text style={styles.stationAddress}>{item.address || 'Address unavailable'}</Text>
-        </View>
-      </View>
 
-      <View style={styles.statsRow}>
-        <View style={styles.statBox}>
-          <View style={styles.statLabelRow}>
-            <Ionicons name="pricetag-outline" size={12} color={palette.metaHint} />
-            <Text style={styles.statLabel}>Pump Price</Text>
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <View style={styles.statLabelRow}>
+              <Ionicons name="pricetag-outline" size={12} color={palette.metaHint} />
+              <Text style={styles.statLabel}>Pump Price</Text>
+            </View>
+            <Text style={styles.statValue}>{item.priceCents.toFixed(1)}¢</Text>
           </View>
-          <Text style={styles.statValue}>{item.priceCents.toFixed(1)}¢</Text>
-        </View>
-        <View style={styles.statBox}>
-          <View style={styles.statLabelRow}>
-            <Ionicons name="navigate-outline" size={12} color={palette.metaHint} />
-            <Text style={styles.statLabel}>{appMode === 'oneWay' ? 'Trip Route' : 'Route'}</Text>
+          <View style={styles.statBox}>
+            <View style={styles.statLabelRow}>
+              <Ionicons name="navigate-outline" size={12} color={palette.metaHint} />
+              <Text style={styles.statLabel}>{appMode === 'oneWay' ? 'Trip Route' : 'Route'}</Text>
+            </View>
+              <Text style={styles.statValue}>
+                {appMode === 'oneWay'
+                  ? `${item.tripWithStopKm?.toFixed(1) ?? item.distanceKm.toFixed(1)} km`
+                  : `${item.distanceKm.toFixed(1)} km`}
+                {appMode === 'oneWay' && item.detourKm !== undefined ? `\n(+${item.detourKm.toFixed(1)} detour)` : ''}
+                {item.durationMin > 0 ? `\n(${Math.round(item.durationMin)} min)` : ''}
+              </Text>
           </View>
-            <Text style={styles.statValue}>
-              {appMode === 'oneWay'
-                ? `${item.tripWithStopKm?.toFixed(1) ?? item.distanceKm.toFixed(1)} km`
-                : `${item.distanceKm.toFixed(1)} km`}
-              {appMode === 'oneWay' && item.detourKm !== undefined ? `\n(+${item.detourKm.toFixed(1)} detour)` : ''}
-              {item.durationMin > 0 ? `\n(${Math.round(item.durationMin)} min)` : ''}
-            </Text>
-        </View>
-        <View style={[styles.statBox, styles.highlightBox]}>
-          <View style={styles.statLabelRow}>
-            <Ionicons name="cash-outline" size={12} color={palette.metaHint} />
-            <Text style={styles.statLabel}>Total Net Cost</Text>
+          <View style={[styles.statBox, styles.highlightBox]}>
+            <View style={styles.statLabelRow}>
+              <Ionicons name="cash-outline" size={12} color={palette.metaHint} />
+              <Text style={styles.statLabel}>Total Net Cost</Text>
+            </View>
+            <Text style={styles.costValue}>${item.totalCostDollars.toFixed(2)}</Text>
           </View>
-          <Text style={styles.costValue}>${item.totalCostDollars.toFixed(2)}</Text>
         </View>
+      </>
+    );
+
+    return (
+      <View style={styles.cardShell}>
+        <TouchableOpacity style={styles.cardTouchable} activeOpacity={0.9} onPress={() => setMapStation(item)}>
+          {canUseLiquidGlass ? (
+            <View style={styles.cardGlass}>
+              <GlassView style={styles.cardGlassBackground} glassEffectStyle="regular" />
+              <View style={styles.cardContent}>{cardContent}</View>
+            </View>
+          ) : (
+            <View style={styles.card}>{cardContent}</View>
+          )}
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   const toggleBrandSelection = (brand: string) => {
     setSelectedBrands((prev) => {
@@ -1024,6 +1019,21 @@ export default function App() {
       </TouchableOpacity>
     ),
     [canUseLiquidGlass, mapStation, openExternalMapForStation, styles]
+  );
+
+  const renderSettingsSection = useCallback(
+    (children: React.ReactNode) => {
+      if (canUseLiquidGlass) {
+        return (
+          <View style={styles.settingsSectionGlass}>
+            <GlassView style={styles.settingsSectionGlassBackground} glassEffectStyle="regular" />
+            <View style={styles.settingsSectionContent}>{children}</View>
+          </View>
+        );
+      }
+      return <View style={styles.settingsSection}>{children}</View>;
+    },
+    [canUseLiquidGlass, styles]
   );
 
   const stationMarker = useMemo<ExpoMapMarker | null>(() => {
@@ -1309,10 +1319,20 @@ export default function App() {
 
   const handleHeaderLayout = useCallback((event: LayoutChangeEvent) => {
     const nextHeight = Math.ceil(event.nativeEvent.layout.height);
-    if (Number.isFinite(nextHeight) && nextHeight > 0 && Math.abs(nextHeight - headerContentHeight) > 1) {
-      setHeaderContentHeight(nextHeight);
+    if (!Number.isFinite(nextHeight) || nextHeight <= 0) {
+      return;
     }
-  }, [headerContentHeight]);
+    setHeaderContentHeights((prev) => {
+      const currentHeight = prev[activeTab] ?? 0;
+      if (Math.abs(nextHeight - currentHeight) <= 1) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [activeTab]: nextHeight
+      };
+    });
+  }, [activeTab]);
 
   const currentSettingsSnapshot = useMemo<SettingsSnapshot>(() => {
     return {
@@ -1468,58 +1488,61 @@ export default function App() {
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 nestedScrollEnabled
               >
-              <View style={styles.settingsSection}>
-                <View style={styles.settingsSectionHeader}>
-                  <Ionicons name="map-outline" size={16} color={palette.title} />
-                  <Text style={styles.settingsSectionTitle}>Trip Mode</Text>
-                </View>
-                <Text style={styles.inputLabel}>Mode</Text>
-                <View style={styles.modeCardRow}>
-                  {(['roundTrip', 'oneWay'] as AppMode[]).map((modeOption) => {
-                    const selected = appMode === modeOption;
-                    return (
-                      <TouchableOpacity
-                        key={modeOption}
-                        style={[styles.modeCard, selected && styles.modeCardSelected]}
-                        onPress={() => setAppMode(modeOption)}
-                      >
-                        <Ionicons
-                          name={modeOption === 'roundTrip' ? 'repeat-outline' : 'navigate-outline'}
-                          size={18}
-                          color={selected ? palette.chipTextSelected : palette.chipText}
-                        />
-                        <Text style={[styles.modeCardTitle, selected && styles.fuelTypeChipTextSelected]}>
-                          {modeOption === 'roundTrip' ? 'Round-trip' : 'One-way'}
-                        </Text>
-                        <Text style={[styles.modeCardHint, selected && styles.fuelTypeChipTextSelected]}>
-                          {modeOption === 'roundTrip' ? 'Nearby station ranking' : 'Route-aware stop planning'}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+              {renderSettingsSection(
+                <>
+                  <View style={styles.settingsSectionHeader}>
+                    <Ionicons name="map-outline" size={16} color={palette.title} />
+                    <Text style={styles.settingsSectionTitle}>Trip Mode</Text>
+                  </View>
+                  <Text style={styles.inputLabel}>Mode</Text>
+                  <View style={styles.modeCardRow}>
+                    {(['roundTrip', 'oneWay'] as AppMode[]).map((modeOption) => {
+                      const selected = appMode === modeOption;
+                      return (
+                        <TouchableOpacity
+                          key={modeOption}
+                          style={[styles.modeCard, selected && styles.modeCardSelected]}
+                          onPress={() => setAppMode(modeOption)}
+                        >
+                          <Ionicons
+                            name={modeOption === 'roundTrip' ? 'repeat-outline' : 'navigate-outline'}
+                            size={18}
+                            color={selected ? palette.chipTextSelected : palette.chipText}
+                          />
+                          <Text style={[styles.modeCardTitle, selected && styles.fuelTypeChipTextSelected]}>
+                            {modeOption === 'roundTrip' ? 'Round-trip' : 'One-way'}
+                          </Text>
+                          <Text style={[styles.modeCardHint, selected && styles.fuelTypeChipTextSelected]}>
+                            {modeOption === 'roundTrip' ? 'Nearby station ranking' : 'Route-aware stop planning'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
 
-                <Text style={styles.inputLabel}>Start Point Source</Text>
-                <View style={styles.sourceToggleRow}>
-                  {[true, false].map((option) => {
-                    const selected = useCurrentLocation === option;
-                    return (
-                      <TouchableOpacity
-                        key={option ? 'use-location' : 'use-addresses'}
-                        style={[styles.sourceToggleButton, selected && styles.sourceToggleButtonSelected]}
-                        onPress={() => setUseCurrentLocation(option)}
-                      >
-                        <Text style={[styles.sourceToggleText, selected && styles.sourceToggleTextSelected]}>
-                          {option ? 'Use my location' : 'Use start address'}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
+                  <Text style={styles.inputLabel}>Start Point Source</Text>
+                  <View style={styles.sourceToggleRow}>
+                    {[true, false].map((option) => {
+                      const selected = useCurrentLocation === option;
+                      return (
+                        <TouchableOpacity
+                          key={option ? 'use-location' : 'use-addresses'}
+                          style={[styles.sourceToggleButton, selected && styles.sourceToggleButtonSelected]}
+                          onPress={() => setUseCurrentLocation(option)}
+                        >
+                          <Text style={[styles.sourceToggleText, selected && styles.sourceToggleTextSelected]}>
+                            {option ? 'Use my location' : 'Use start address'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
 
               {!useCurrentLocation ? (
-                <View style={styles.settingsSection}>
+                renderSettingsSection(
+                <>
                   <View style={styles.settingsSectionHeader}>
                     <Ionicons name="pin-outline" size={16} color={palette.title} />
                     <Text style={styles.settingsSectionTitle}>Start Address</Text>
@@ -1600,11 +1623,13 @@ export default function App() {
                       ))}
                     </View>
                   ) : null}
-                </View>
+                </>
+                )
               ) : null}
 
               {appMode === 'oneWay' ? (
-                <View style={styles.settingsSection}>
+                renderSettingsSection(
+                <>
                   <View style={styles.settingsSectionHeader}>
                     <Ionicons name="flag-outline" size={16} color={palette.title} />
                     <Text style={styles.settingsSectionTitle}>Destination</Text>
@@ -1689,10 +1714,12 @@ export default function App() {
                       ))}
                     </View>
                   ) : null}
-                </View>
+                </>
+                )
               ) : null}
 
-              <View style={styles.settingsSection}>
+              {renderSettingsSection(
+              <>
                 <View style={styles.settingsSectionHeader}>
                   <Ionicons name="car-sport-outline" size={16} color={palette.title} />
                   <Text style={styles.settingsSectionTitle}>Vehicle & Fuel</Text>
@@ -1753,7 +1780,8 @@ export default function App() {
                     );
                   })}
                 </View>
-              </View>
+              </>
+              )}
 
               </ScrollView>
             </KeyboardAvoidingView>
@@ -1805,26 +1833,28 @@ export default function App() {
                     accessibilityRole="button"
                     accessibilityLabel="Save settings"
                     onPress={() => {
-                      if (hasPendingSettingsChanges) {
-                        void handleSaveSettings();
-                      } else {
-                        setActiveTab('prices');
-                      }
+                      void handleSaveSettings();
                     }}
-                    disabled={loading}
+                    disabled={loading || !hasPendingSettingsChanges}
                     style={styles.headerSaveButton}
                   >
-                    {canUseLiquidGlass ? (
-                      <GlassView style={styles.headerSaveGlass} glassEffectStyle={loading ? 'clear' : 'regular'}>
-                        <Text style={[styles.headerSaveButtonText, loading ? styles.headerSaveButtonTextDisabled : styles.headerSaveButtonTextEnabled]}>
-                          Save
-                        </Text>
+                    {loading || !hasPendingSettingsChanges ? (
+                      canUseLiquidGlass ? (
+                        <GlassView style={styles.headerSaveGlass} glassEffectStyle="clear">
+                          <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
+                        </GlassView>
+                      ) : (
+                        <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonDisabled]}>
+                          <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
+                        </View>
+                      )
+                    ) : canUseLiquidGlass ? (
+                      <GlassView style={styles.headerSaveGlass} glassEffectStyle="regular">
+                        <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextEnabled]}>Save</Text>
                       </GlassView>
                     ) : (
-                      <View style={[styles.headerSaveButtonFallback, loading ? styles.headerSaveButtonDisabled : styles.headerSaveButtonEnabled]}>
-                        <Text style={[styles.headerSaveButtonText, loading ? styles.headerSaveButtonTextDisabled : styles.headerSaveButtonTextEnabled]}>
-                          Save
-                        </Text>
+                      <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonEnabled]}>
+                        <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextEnabled]}>Save</Text>
                       </View>
                     )}
                   </TouchableOpacity>

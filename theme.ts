@@ -4,14 +4,10 @@ export type ThemeMode = 'light' | 'dark';
 
 type Palette = {
   bg: string;
-  headerBg: string;
   headerOverlayBg: string;
   headerBorder: string;
   title: string;
   subtitle: string;
-  fuelBadgeBg: string;
-  fuelBadgeBorder: string;
-  fuelBadgeText: string;
   metaHint: string;
   iconButtonBg: string;
   iconButtonBorder: string;
@@ -42,26 +38,16 @@ type Palette = {
   chipSelectedBg: string;
   chipText: string;
   chipTextSelected: string;
-  routingLiveBg: string;
-  routingLiveBorder: string;
-  routingLiveText: string;
-  routingEstimatedBg: string;
-  routingEstimatedBorder: string;
-  routingEstimatedText: string;
   primary: string;
   primaryMuted: string;
 };
 
 const light: Palette = {
   bg: '#eef2f7',
-  headerBg: '#eef2f7',
   headerOverlayBg: 'rgba(238, 242, 247, 0.72)',
   headerBorder: '#dbe5ef',
   title: '#0f172a',
   subtitle: '#475569',
-  fuelBadgeBg: '#e0edff',
-  fuelBadgeBorder: '#b7d2ff',
-  fuelBadgeText: '#0b4bb3',
   metaHint: '#64748b',
   iconButtonBg: '#e8eef7',
   iconButtonBorder: '#d1dbea',
@@ -92,26 +78,16 @@ const light: Palette = {
   chipSelectedBg: '#e7f1ff',
   chipText: '#516273',
   chipTextSelected: '#0b67d1',
-  routingLiveBg: '#e8f7ee',
-  routingLiveBorder: '#9fd8b5',
-  routingLiveText: '#166534',
-  routingEstimatedBg: '#fff4e5',
-  routingEstimatedBorder: '#ffd08a',
-  routingEstimatedText: '#9a4b00',
   primary: '#0b67d1',
   primaryMuted: '#0066cc'
 };
 
 const dark: Palette = {
   bg: '#0f1419',
-  headerBg: '#0f1419',
   headerOverlayBg: 'rgba(15, 20, 25, 0.72)',
   headerBorder: '#2a3544',
   title: '#f1f5f9',
   subtitle: '#94a3b8',
-  fuelBadgeBg: '#1e3a5f',
-  fuelBadgeBorder: '#2d5a8a',
-  fuelBadgeText: '#93c5fd',
   metaHint: '#94a3b8',
   iconButtonBg: '#1e293b',
   iconButtonBorder: '#334155',
@@ -142,12 +118,6 @@ const dark: Palette = {
   chipSelectedBg: '#1e3a5f',
   chipText: '#cbd5e1',
   chipTextSelected: '#93c5fd',
-  routingLiveBg: '#123025',
-  routingLiveBorder: '#276749',
-  routingLiveText: '#86efac',
-  routingEstimatedBg: '#3a260b',
-  routingEstimatedBorder: '#7c4a10',
-  routingEstimatedText: '#fbbf24',
   primary: '#3b82f6',
   primaryMuted: '#60a5fa'
 };
@@ -162,12 +132,6 @@ export function createThemedStyles(c: Palette) {
       flex: 1,
       backgroundColor: c.bg
     },
-    header: {
-      padding: 20,
-      paddingBottom: 10,
-      backgroundColor: c.headerBg,
-      borderBottomWidth: 0
-    },
     headerOverlayContainer: {
       position: 'absolute',
       top: 20,
@@ -178,19 +142,6 @@ export function createThemedStyles(c: Palette) {
     headerPlainContent: {
       paddingHorizontal: 2,
       paddingVertical: 2
-    },
-    headerGlass: {
-      borderRadius: 18,
-      paddingHorizontal: 14,
-      paddingVertical: 12
-    },
-    headerFallback: {
-      borderRadius: 18,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      backgroundColor: c.headerOverlayBg,
-      borderWidth: 1,
-      borderColor: c.headerBorder
     },
     title: {
       fontSize: 28,
@@ -264,13 +215,36 @@ export function createThemedStyles(c: Palette) {
       color: c.emptyText,
       textAlign: 'center'
     },
-    card: {
-      backgroundColor: c.cardBg,
-      borderRadius: 16,
+    cardShell: {
+      borderRadius: 12,
+      marginBottom: 14
+    },
+    cardTouchable: {
+      borderRadius: 12
+    },
+    cardGlass: {
+      borderRadius: 12,
+      overflow: 'hidden',
       borderWidth: 1,
       borderColor: c.cardBorder,
-      padding: 16,
-      marginBottom: 16,
+      shadowColor: c.cardShadow,
+      shadowOffset: { width: 0, height: 7 },
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      elevation: 3
+    },
+    cardGlassBackground: {
+      ...StyleSheet.absoluteFillObject
+    },
+    cardContent: {
+      padding: 14
+    },
+    card: {
+      backgroundColor: c.cardBg,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: c.cardBorder,
+      padding: 14,
       shadowColor: c.cardShadow,
       shadowOffset: { width: 0, height: 7 },
       shadowOpacity: 0.12,
@@ -347,53 +321,6 @@ export function createThemedStyles(c: Palette) {
       fontWeight: '800',
       color: c.costValue
     },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: c.modalOverlay,
-      justifyContent: 'flex-end',
-      alignItems: 'center',
-      padding: 14
-    },
-    modalBackdrop: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0
-    },
-    modalKeyboardWrap: {
-      flex: 1,
-      width: '100%',
-      alignItems: 'center',
-      justifyContent: 'flex-end',
-      zIndex: 1
-    },
-    modalContent: {
-      backgroundColor: c.modalBg,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      borderBottomLeftRadius: 16,
-      borderBottomRightRadius: 16,
-      borderWidth: 1,
-      borderColor: c.modalBorder,
-      padding: 18,
-      width: '100%',
-      maxWidth: 400,
-      height: '92%',
-      shadowColor: c.cardShadow,
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.2,
-      shadowRadius: 18,
-      elevation: 5
-    },
-    modalScroll: {
-      flex: 1
-    },
-    modalScrollContent: {
-      flexGrow: 1,
-      paddingBottom: 14,
-      gap: 12
-    },
     settingsPageWrap: {
       flex: 1
     },
@@ -404,10 +331,6 @@ export function createThemedStyles(c: Palette) {
     settingsPageContent: {
       paddingTop: 8,
       gap: 14
-    },
-    settingsPageHeader: {
-      paddingHorizontal: 4,
-      marginBottom: 4
     },
     settingsHeaderRow: {
       flexDirection: 'row',
@@ -475,6 +398,23 @@ export function createThemedStyles(c: Palette) {
       shadowRadius: 10,
       elevation: 3
     },
+    settingsSectionGlass: {
+      borderWidth: 1,
+      borderColor: c.cardBorder,
+      borderRadius: 12,
+      overflow: 'hidden',
+      shadowColor: c.cardShadow,
+      shadowOffset: { width: 0, height: 7 },
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      elevation: 3
+    },
+    settingsSectionGlassBackground: {
+      ...StyleSheet.absoluteFillObject
+    },
+    settingsSectionContent: {
+      padding: 14
+    },
     settingsSectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -487,52 +427,6 @@ export function createThemedStyles(c: Palette) {
       fontWeight: '800',
       marginBottom: 0,
       letterSpacing: 0.2
-    },
-    modalHandle: {
-      alignSelf: 'center',
-      width: 44,
-      height: 4,
-      borderRadius: 999,
-      backgroundColor: c.chipBorder,
-      marginBottom: 10
-    },
-    modalHeaderRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 14
-    },
-    modalTitleWrap: {
-      flex: 1,
-      marginHorizontal: 8
-    },
-    modalCloseButton: {
-      width: 34,
-      height: 34,
-      borderWidth: 1,
-      borderColor: c.iconButtonBorder,
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: c.iconButtonBg
-    },
-    modalFooter: {
-      borderTopWidth: 1,
-      borderTopColor: c.modalBorder,
-      marginTop: 8,
-      paddingTop: 12
-    },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: '800',
-      marginBottom: 0,
-      color: c.modalTitle,
-      textAlign: 'left'
-    },
-    modalSubtitle: {
-      marginTop: 2,
-      fontSize: 12,
-      color: c.metaHint
     },
     inputLabel: {
       fontSize: 14,
@@ -699,28 +593,6 @@ export function createThemedStyles(c: Palette) {
     suggestionText: {
       color: c.inputText,
       fontSize: 13
-    },
-    saveButton: {
-      backgroundColor: c.primary,
-      padding: 14,
-      borderRadius: 10,
-      alignItems: 'center',
-      marginTop: 0,
-      shadowColor: c.primary,
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.25,
-      shadowRadius: 10,
-      elevation: 3
-    },
-    saveButtonRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8
-    },
-    saveButtonText: {
-      color: '#fff',
-      fontSize: 16,
-      fontWeight: '800'
     },
     bottomNavOuter: {
       position: 'absolute',

@@ -154,9 +154,9 @@ export default function App() {
   const isSettingsTabActive = activeTab === 'settings';
   const bottomNavInset = Platform.OS === 'ios' ? 8 : 6;
   const bottomNavHeight = 58 + bottomNavInset;
-  const statusBarInset = Math.max(Constants.statusBarHeight ?? 0, Platform.OS === 'android' ? 24 : 0);
-  const headerTopOffset = statusBarInset + 6;
-  const topHeaderHeight = headerTopOffset + headerContentHeight + 8;
+  const statusBarInset = Constants.statusBarHeight ?? 0;
+  const headerTopOffset = statusBarInset;
+  const topHeaderHeight = headerTopOffset + headerContentHeight + 20;
   const canUseLiquidGlass = Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
   useEffect(() => {
@@ -1337,7 +1337,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} backgroundColor="transparent" />
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
 
         <Modal
           visible={!!mapStation}

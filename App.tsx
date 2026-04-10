@@ -17,7 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
+import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import * as SystemUI from 'expo-system-ui';
@@ -138,9 +138,7 @@ export default function App() {
   const [roundTripRouteGeometry, setRoundTripRouteGeometry] = useState<Coordinates[] | null>(null);
   const isMountedRef = useRef(true);
   const isSelectingSuggestionRef = useRef(false);
-  const settingsAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settingsSaveInFlightRef = useRef(false);
-  const handleSaveSettingsRef = useRef<(options?: SaveSettingsOptions) => Promise<void>>(async () => {});
   const prevStartAddressForImeRef = useRef('');
   const prevDestinationAddressForImeRef = useRef('');
   const suppressStartSuggestionFetchRef = useRef(false);
@@ -922,8 +920,6 @@ export default function App() {
     }
     settingsSaveInFlightRef.current = false;
   };
-  handleSaveSettingsRef.current = handleSaveSettings;
-
   const renderItem = ({ item, index }: { item: RankedStation; index: number }) => (
     <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={() => setMapStation(item)}>
       <View style={styles.cardHeader}>
@@ -1001,6 +997,34 @@ export default function App() {
   const openExternalMapForStation = useCallback((station: RankedStation) => {
     void Linking.openURL(buildExternalMapUrl(station));
   }, []);
+
+  const renderMapExternalButton = useCallback(
+    (label: string) => (
+      <TouchableOpacity
+        style={styles.mapOpenExternalButton}
+        onPress={() => {
+          if (mapStation) {
+            openExternalMapForStation(mapStation);
+          }
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+      >
+        {canUseLiquidGlass ? (
+          <GlassView style={styles.mapOpenExternalButtonGlass} glassEffectStyle="regular">
+            <Text style={[styles.mapOpenExternalButtonText, styles.mapOpenExternalButtonTextGlass]}>
+              {label}
+            </Text>
+          </GlassView>
+        ) : (
+          <View style={styles.mapOpenExternalButtonFallback}>
+            <Text style={styles.mapOpenExternalButtonText}>{label}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    ),
+    [canUseLiquidGlass, mapStation, openExternalMapForStation, styles]
+  );
 
   const stationMarker = useMemo<ExpoMapMarker | null>(() => {
     if (!mapStation) {
@@ -1317,23 +1341,6 @@ export default function App() {
     );
   }, [savedSettingsSnapshot, currentSettingsSnapshot]);
 
-  useEffect(() => {
-    if (activeTab !== 'settings' || !hasPendingSettingsChanges || loading || settingsSaveInFlightRef.current) {
-      return;
-    }
-    if (settingsAutosaveTimerRef.current) {
-      clearTimeout(settingsAutosaveTimerRef.current);
-    }
-    settingsAutosaveTimerRef.current = setTimeout(() => {
-      void handleSaveSettingsRef.current({ switchToPrices: false, silentValidation: true });
-    }, 900);
-    return () => {
-      if (settingsAutosaveTimerRef.current) {
-        clearTimeout(settingsAutosaveTimerRef.current);
-      }
-    };
-  }, [activeTab, hasPendingSettingsChanges, loading]);
-
   return (
     <SafeAreaProvider>
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} backgroundColor="transparent" />
@@ -1384,14 +1391,7 @@ export default function App() {
                     },
                     loading: 'lazy'
                   })}
-                  <TouchableOpacity
-                    style={styles.mapOpenExternalButton}
-                    onPress={() => openExternalMapForStation(mapStation)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Open map in Google Maps"
-                  >
-                    <Text style={styles.mapOpenExternalButtonText}>Open in Google Maps</Text>
-                  </TouchableOpacity>
+                  {renderMapExternalButton('Open in Google Maps')}
                 </View>
               ) : mapStation && Platform.OS === 'ios' && AppleMapsView ? (
                 <View style={styles.mapWebWrap}>
@@ -1401,14 +1401,7 @@ export default function App() {
                     markers={mapMarkers}
                     polylines={mapPolylines}
                   />
-                  <TouchableOpacity
-                    style={styles.mapOpenExternalButton}
-                    onPress={() => openExternalMapForStation(mapStation)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Open map in Apple Maps"
-                  >
-                    <Text style={styles.mapOpenExternalButtonText}>Open in Apple Maps</Text>
-                  </TouchableOpacity>
+                  {renderMapExternalButton('Open in Apple Maps')}
                 </View>
               ) : mapStation && Platform.OS === 'android' && GoogleMapsView ? (
                 <View style={styles.mapWebWrap}>
@@ -1418,14 +1411,7 @@ export default function App() {
                     markers={mapMarkers}
                     polylines={mapPolylines}
                   />
-                  <TouchableOpacity
-                    style={styles.mapOpenExternalButton}
-                    onPress={() => openExternalMapForStation(mapStation)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Open map in Google Maps"
-                  >
-                    <Text style={styles.mapOpenExternalButtonText}>Open in Google Maps</Text>
-                  </TouchableOpacity>
+                  {renderMapExternalButton('Open in Google Maps')}
                 </View>
               ) : (
                 <View style={styles.mapUnavailableBox}>
@@ -1781,25 +1767,67 @@ export default function App() {
                 <Text style={styles.title}>OnlyFuel</Text>
                 <Text style={styles.subtitle}>{appMode === 'oneWay' ? 'One-way one-stop planner' : 'Round-trip nearby ranking'}</Text>
                 <View style={styles.summarySingleRow}>
-                  <View style={styles.summaryChip}>
-                    <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
-                  </View>
-                  <View style={styles.summaryChip}>
-                    <Text style={styles.summaryChipText}>{appliedFuelType}</Text>
-                  </View>
-                  <View style={styles.summaryChip}>
-                    <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
-                  </View>
+                  {canUseLiquidGlass ? (
+                    <>
+                      <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
+                        <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
+                      </GlassView>
+                      <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
+                        <Text style={styles.summaryChipText}>{appliedFuelType}</Text>
+                      </GlassView>
+                      <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
+                        <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
+                      </GlassView>
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.summaryChip}>
+                        <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
+                      </View>
+                      <View style={styles.summaryChip}>
+                        <Text style={styles.summaryChipText}>{appliedFuelType}</Text>
+                      </View>
+                      <View style={styles.summaryChip}>
+                        <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
+                      </View>
+                    </>
+                  )}
                 </View>
               </>
             ) : (
               <>
-                <Text style={styles.title}>Preferences</Text>
-                <Text style={styles.subtitle}>Scroll to see all options.</Text>
-                <View style={styles.summarySingleRow}>
-                  <View style={styles.summaryChip}>
-                    <Text style={styles.summaryChipText}>Changes save automatically</Text>
+                <View style={styles.settingsHeaderRow}>
+                  <View style={styles.settingsHeaderTextWrap}>
+                    <Text style={styles.title}>Preferences</Text>
+                    <Text style={styles.subtitle}>Scroll to see all options.</Text>
                   </View>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Save settings"
+                    onPress={() => {
+                      if (hasPendingSettingsChanges) {
+                        void handleSaveSettings();
+                      } else {
+                        setActiveTab('prices');
+                      }
+                    }}
+                    disabled={loading}
+                    style={styles.headerSaveButton}
+                  >
+                    {canUseLiquidGlass ? (
+                      <GlassView style={styles.headerSaveGlass} glassEffectStyle={loading ? 'clear' : 'regular'}>
+                        <Text style={[styles.headerSaveButtonText, loading ? styles.headerSaveButtonTextDisabled : styles.headerSaveButtonTextEnabled]}>
+                          Save
+                        </Text>
+                      </GlassView>
+                    ) : (
+                      <View style={[styles.headerSaveButtonFallback, loading ? styles.headerSaveButtonDisabled : styles.headerSaveButtonEnabled]}>
+                        <Text style={[styles.headerSaveButtonText, loading ? styles.headerSaveButtonTextDisabled : styles.headerSaveButtonTextEnabled]}>
+                          Save
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
                 </View>
               </>
             )}

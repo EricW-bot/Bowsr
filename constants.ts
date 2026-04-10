@@ -40,6 +40,7 @@ export const BRAND_OPTIONS = [
   'Ampol Breeze',
   'BP',
   'Budget',
+  'Costco',
   'EG Ampol',
   'Enhance',
   'Metro Fuel',

@@ -217,6 +217,11 @@ export function createThemedStyles(c: Palette) {
       paddingHorizontal: 10,
       paddingVertical: 4
     },
+    summaryChipGlass: {
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4
+    },
     summaryChipText: {
       color: c.chipText,
       fontSize: 12,
@@ -404,12 +409,71 @@ export function createThemedStyles(c: Palette) {
       paddingHorizontal: 4,
       marginBottom: 4
     },
+    settingsHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10
+    },
+    settingsHeaderTextWrap: {
+      flex: 1,
+      minWidth: 0
+    },
+    headerSaveButton: {
+      minWidth: 82,
+      height: 34,
+      borderRadius: 11,
+      overflow: 'hidden'
+    },
+    headerSaveGlass: {
+      flex: 1,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12
+    },
+    headerSaveButtonFallback: {
+      flex: 1,
+      borderRadius: 11,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12
+    },
+    headerSaveButtonEnabled: {
+      backgroundColor: c.primary,
+      borderColor: c.primary,
+      shadowColor: c.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 2
+    },
+    headerSaveButtonDisabled: {
+      backgroundColor: c.iconButtonBg,
+      borderColor: c.primaryMuted
+    },
+    headerSaveButtonText: {
+      fontSize: 14,
+      fontWeight: '800'
+    },
+    headerSaveButtonTextEnabled: {
+      color: c.title
+    },
+    headerSaveButtonTextDisabled: {
+      color: c.subtitle
+    },
     settingsSection: {
       borderWidth: 1,
       borderColor: c.cardBorder,
       borderRadius: 12,
       padding: 14,
-      backgroundColor: c.cardBg
+      backgroundColor: c.cardBg,
+      shadowColor: c.cardShadow,
+      shadowOffset: { width: 0, height: 7 },
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      elevation: 3
     },
     settingsSectionHeader: {
       flexDirection: 'row',
@@ -760,6 +824,15 @@ export function createThemedStyles(c: Palette) {
       position: 'absolute',
       left: 12,
       top: 12,
+      borderRadius: 999,
+      overflow: 'hidden'
+    },
+    mapOpenExternalButtonGlass: {
+      borderRadius: 999,
+      paddingVertical: 8,
+      paddingHorizontal: 12
+    },
+    mapOpenExternalButtonFallback: {
       backgroundColor: c.primary,
       borderRadius: 999,
       paddingVertical: 8,
@@ -769,6 +842,9 @@ export function createThemedStyles(c: Palette) {
       color: '#fff',
       fontSize: 12,
       fontWeight: '700'
+    },
+    mapOpenExternalButtonTextGlass: {
+      color: c.primary
     },
     mapUnavailableBox: {
       flex: 1,

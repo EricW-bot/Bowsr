@@ -1468,7 +1468,7 @@ export default function App() {
             </PricesTab>
           )
         ) : (
-          <SettingsTab style={styles.settingsPageWrap}>
+          <SettingsTab style={[styles.settingsPageWrap, { paddingTop: topHeaderHeight }]}>
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
@@ -1476,7 +1476,7 @@ export default function App() {
             >
               <ScrollView
                 style={styles.settingsPageScroll}
-                contentContainerStyle={[styles.settingsPageContent, { paddingTop: topHeaderHeight, paddingBottom: bottomNavHeight + 8 }]}
+                contentContainerStyle={[styles.settingsPageContent, { paddingBottom: bottomNavHeight + 8 }]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="always"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -1795,7 +1795,12 @@ export default function App() {
             ) : (
               <>
                 <Text style={styles.title}>Preferences</Text>
-                <Text style={styles.subtitle}>Scroll to see all options.{'\n'}Changes save automatically.</Text>
+                <Text style={styles.subtitle}>Scroll to see all options.</Text>
+                <View style={styles.summarySingleRow}>
+                  <View style={styles.summaryChip}>
+                    <Text style={styles.summaryChipText}>Changes save automatically</Text>
+                  </View>
+                </View>
               </>
             )}
           </View>

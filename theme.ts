@@ -406,10 +406,10 @@ export function createThemedStyles(c: Palette) {
     },
     settingsSection: {
       borderWidth: 1,
-      borderColor: c.modalBorder,
+      borderColor: c.cardBorder,
       borderRadius: 12,
       padding: 14,
-      backgroundColor: c.inputBg
+      backgroundColor: c.cardBg
     },
     settingsSectionHeader: {
       flexDirection: 'row',

@@ -6,12 +6,12 @@ jest.mock('../constants', () => ({
   GOOGLE_MAPS_IOS_API_KEY: ''
 }));
 
-jest.mock('../network', () => ({
+jest.mock('../clients/network', () => ({
   fetchWithTimeout: jest.fn()
 }));
 
-import { fetchWithTimeout } from '../network';
-import { fetchAddressSuggestions, resolveAddressByPlaceId } from '../geocodingClient';
+import { fetchWithTimeout } from '../clients/network';
+import { fetchAddressSuggestions, resolveAddressByPlaceId } from '../clients/geocodingClient';
 
 const mockedFetchWithTimeout = fetchWithTimeout as jest.MockedFunction<typeof fetchWithTimeout>;
 

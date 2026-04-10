@@ -1,11 +1,11 @@
-import type { Coordinates } from './Interface';
+import type { Coordinates } from '../Interface';
 import { Platform } from 'react-native';
 import {
   GOOGLE_MAPS_ANDROID_API_KEY,
   GOOGLE_MAPS_API_KEY,
   GOOGLE_MAPS_IOS_API_KEY,
   GOOGLE_MAPS_WEB_API_KEY
-} from './constants';
+} from '../constants';
 import { fetchWithTimeout } from './network';
 
 export type AddressSuggestion = {

@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, TouchableOpacity, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassView } from 'expo-glass-effect';
-import type { AppTab, TabDefinition } from '../tabs/types';
+import type { AppTab, TabDefinition } from '../Interface';
 
 type FloatingBottomNavStyles = {
   bottomNavOuter: StyleProp<ViewStyle>;

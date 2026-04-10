@@ -29,13 +29,13 @@ import {
   NEARBY_RADIUS_KM,
   TRIP_SAMPLE_RADIUS_KM
 } from './constants';
-import { fetchNearbyFuelData, getAccessToken } from './fuelApiClient';
-import { fetchAddressSuggestions, resolveAddress, resolveAddressByPlaceId, type AddressSuggestion } from './geocodingClient';
-import type { AppMode, Coordinates, FuelApiData, RankedStation } from './Interface';
+import { fetchNearbyFuelData, getAccessToken } from './clients/fuelApiClient';
+import { fetchAddressSuggestions, resolveAddress, resolveAddressByPlaceId, type AddressSuggestion } from './clients/geocodingClient';
+import type { AppMode, AppTab, Coordinates, FuelApiData, RankedStation, TabDefinition } from './Interface';
 import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
 import { createThemedStyles, getPalette } from './theme';
 import { runTripAlgorithmValidation } from './tripValidation';
-import { getErrorMessage, normalizeBrands, normalizeFuelType } from './utils';
+import { getErrorMessage, normalizeBrands, normalizeFuelType } from './helpers/utils';
 import {
   buildExternalMapUrl,
   buildWebMapEmbedUrl,
@@ -43,13 +43,12 @@ import {
   getRoundTripStartMissingMessage,
   getTripAddressMissingMessage,
   LIVE_DATA_TIMEOUT_MS
-} from './appHelpers';
-import { getCurrentLocationWithTimeout } from './locationHelpers';
-import { fetchOneWayRouteGeometry, fetchRoundTripRouteGeometry } from './routeGeometryHelpers';
+} from './helpers/appHelpers';
+import { getCurrentLocationWithTimeout } from './helpers/locationHelpers';
+import { fetchOneWayRouteGeometry, fetchRoundTripRouteGeometry } from './helpers/routeGeometryHelpers';
 import { FloatingBottomNav } from './components/FloatingBottomNav';
 import { PricesTab } from './tabs/PricesTab';
 import { SettingsTab } from './tabs/SettingsTab';
-import type { AppTab, TabDefinition } from './tabs/types';
 
 type ExpoMapMarker = {
   id: string;

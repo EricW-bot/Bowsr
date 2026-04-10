@@ -19,7 +19,7 @@ describe('routing client fallback behavior', () => {
       AVG_CITY_SPEED_KMH: 50,
       OPENROUTESERVICE_API_KEY: 'ors-key'
     }));
-    jest.doMock('../network', () => ({
+    jest.doMock('../clients/network', () => ({
       fetchWithTimeout
     }));
 
@@ -64,7 +64,7 @@ describe('routing client fallback behavior', () => {
       AVG_CITY_SPEED_KMH: 50,
       OPENROUTESERVICE_API_KEY: 'ors-key'
     }));
-    jest.doMock('../network', () => ({
+    jest.doMock('../clients/network', () => ({
       fetchWithTimeout
     }));
 

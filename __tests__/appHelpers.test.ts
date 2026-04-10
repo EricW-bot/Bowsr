@@ -4,7 +4,7 @@ import {
   buildWebOneWayMapEmbedUrl,
   getRoundTripStartMissingMessage,
   getTripAddressMissingMessage
-} from '../appHelpers';
+} from '../helpers/appHelpers';
 import type { RankedStation } from '../Interface';
 
 describe('appHelpers', () => {

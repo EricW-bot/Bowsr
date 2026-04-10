@@ -1,6 +1,6 @@
-import { API_KEY, BASIC_AUTH_HEADER } from './constants';
-import type { FuelApiData, Price, Station } from './Interface';
-import { normalizeBrands } from './utils';
+import { API_KEY, BASIC_AUTH_HEADER } from '../constants';
+import type { FuelApiData, Price, Station } from '../Interface';
+import { normalizeBrands } from '../helpers/utils';
 import { fetchWithTimeout } from './network';
 
 const sleep = async (ms: number): Promise<void> => {

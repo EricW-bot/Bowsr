@@ -1,5 +1,5 @@
-import type { Coordinates } from './Interface';
-import { fetchWithTimeout } from './network';
+import type { Coordinates } from '../Interface';
+import { fetchWithTimeout } from '../clients/network';
 
 type OsrmGeometryResponse = {
   routes?: {

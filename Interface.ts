@@ -37,6 +37,13 @@ export type Coordinates = {
 };
 
 export type AppMode = 'roundTrip' | 'oneWay';
+export type AppTab = 'prices' | 'settings';
+
+export type TabDefinition = {
+  key: AppTab;
+  label: string;
+  icon: 'pricetag-outline' | 'settings-outline';
+};
 
 export type RankedStation = Station & {
   priceCents: number;

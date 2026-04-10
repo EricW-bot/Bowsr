@@ -21,4 +21,3 @@ export async function fetchWithTimeout(
     // `controller.abort()` is invoked by the timer as well.
   }
 }
-

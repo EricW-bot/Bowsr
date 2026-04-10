@@ -1,7 +1,7 @@
 import type { Coordinates, RouteMetrics } from './Interface';
 import { Platform } from 'react-native';
 import { AVG_CITY_SPEED_KMH, OPENROUTESERVICE_API_KEY } from './constants';
-import { fetchWithTimeout } from './network';
+import { fetchWithTimeout } from './clients/network';
 
 let estimatedRoutingUsedInSession = false;
 

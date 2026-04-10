@@ -1,4 +1,4 @@
-import { DEFAULT_FUEL_TYPE } from './constants';
+import { DEFAULT_FUEL_TYPE } from '../constants';
 
 export const getErrorMessage = (err: unknown, fallback: string): string => {
   return err instanceof Error ? err.message : fallback;

@@ -34,6 +34,8 @@ export function FloatingBottomNav({
   unselectedColor,
   styles
 }: FloatingBottomNavProps) {
+  const selectedTextColor = '#000000';
+
   const buttons = tabs.map((tab) => {
     const selected = activeTab === tab.key;
     return (
@@ -45,7 +47,7 @@ export function FloatingBottomNav({
         accessibilityLabel={tab.label}
       >
         <Ionicons name={tab.icon} size={20} color={selected ? selectedColor : unselectedColor} />
-        {selected ? <Text style={styles.bottomNavItemText}>{tab.label}</Text> : null}
+        <Text style={[styles.bottomNavItemText, { color: selected ? selectedTextColor : unselectedColor }]}>{tab.label}</Text>
       </TouchableOpacity>
     );
   });

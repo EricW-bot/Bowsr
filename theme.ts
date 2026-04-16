@@ -144,6 +144,13 @@ export function createThemedStyles(c: Palette) {
       paddingVertical: 2,
       paddingTop: 10
     },
+    headerVignette: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      zIndex: 10
+    },
     title: {
       fontSize: 36,
       fontWeight: '800',

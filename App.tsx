@@ -17,6 +17,8 @@ import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-
 import { StatusBar } from 'expo-status-bar';
 import { ThemedGlassView, canUseLiquidGlass } from './components/ThemedGlassView';
 import { GlassView } from 'expo-glass-effect';
+import MaskedView from '@react-native-masked-view/masked-view';
+import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import * as SystemUI from 'expo-system-ui';
@@ -1522,6 +1524,21 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
           </SettingsTab>
         )}
 
+        <View pointerEvents="none" style={[styles.headerVignette, { height: topHeaderHeight + 40 }]}>
+          <MaskedView
+            style={{ flex: 1 }}
+            maskElement={
+              <LinearGradient
+                colors={['rgba(0,0,0,1)', 'rgba(0,0,0,1)', 'rgba(0,0,0,0)']}
+                locations={[0, 0.7, 1]}
+                style={{ flex: 1 }}
+              />
+            }
+          >
+            <ThemedGlassView style={{ flex: 1 }} glassEffectStyle="regular" fallbackStyle={{ backgroundColor: palette.bg }} />
+          </MaskedView>
+        </View>
+
         <View pointerEvents="box-none" style={[styles.headerOverlayContainer, { top: headerTopOffset }]}>
           <View style={styles.headerPlainContent} onLayout={handleHeaderLayout}>
             {activeTab === 'prices' ? (
@@ -1581,7 +1598,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                 />
               </>
             )}
-          </View>
+            </View>
         </View>
 
         {!hideBottomNav ? (

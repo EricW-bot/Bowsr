@@ -73,7 +73,8 @@ module.exports = () => {
           locationWhenInUsePermission: iosLocationPurpose
         }
       ],
-      'expo-font'
+      'expo-font',
+      'expo-router'
     ]
   };
 };

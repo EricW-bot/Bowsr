@@ -15,7 +15,7 @@ import {
   useColorScheme
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 import Constants from 'expo-constants';
@@ -83,6 +83,12 @@ type SettingsSnapshot = {
   tripDestinationAddress: string;
 };
 
+type AppProps = {
+  initialTab?: AppTab;
+  hideBottomNav?: boolean;
+  onNavigateToTab?: (tab: AppTab) => void;
+};
+
 /** One-shot text expansion typical of OS keyboard autocomplete or paste (not single-character typing). */
 function isLikelyImeAddressCommit(prev: string, value: string): boolean {
   const trimmed = value.trim();
@@ -99,10 +105,32 @@ function isLikelyImeAddressCommit(prev: string, value: string): boolean {
   return prevTrim.length >= 2 && trimmed.startsWith(prevTrim) && trimmed.length - prevTrim.length >= 5;
 }
 
-export default function App() {
+function roundToTwoDecimalPlaces(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return '';
+  }
+  const numeric = Number(trimmed);
+  if (!Number.isFinite(numeric)) {
+    return trimmed;
+  }
+  const rounded = Math.round((numeric + Number.EPSILON) * 100) / 100;
+  return String(rounded);
+}
+
+export default function App({ initialTab = 'prices', hideBottomNav = false, onNavigateToTab }: AppProps) {
+  return (
+    <SafeAreaProvider>
+      <AppContent initialTab={initialTab} hideBottomNav={hideBottomNav} onNavigateToTab={onNavigateToTab} />
+    </SafeAreaProvider>
+  );
+}
+
+function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateToTab }: AppProps) {
+  const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const themeMode = colorScheme === 'dark' ? 'dark' : 'light';
-  const [activeTab, setActiveTab] = useState<AppTab>('prices');
+  const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const [headerContentHeights, setHeaderContentHeights] = useState<Record<AppTab, number>>({
     prices: 84,
     settings: 84
@@ -148,7 +176,14 @@ export default function App() {
   const palette = useMemo(() => getPalette(themeMode), [themeMode]);
   const styles = useMemo(() => createThemedStyles(palette), [palette]);
   const isSettingsTabActive = activeTab === 'settings';
-  const bottomNavInset = Platform.OS === 'ios' ? 8 : 6;
+  const navigateToTab = useCallback(
+    (tab: AppTab) => {
+      setActiveTab(tab);
+      onNavigateToTab?.(tab);
+    },
+    [onNavigateToTab]
+  );
+  const bottomNavInset = Platform.OS === 'ios' ? Math.max(insets.bottom, 8) : 6;
   const bottomNavHeight = 58 + bottomNavInset;
   const statusBarInset = Constants.statusBarHeight ?? 0;
   const headerTopOffset = statusBarInset;
@@ -737,6 +772,10 @@ export default function App() {
     }
     settingsSaveInFlightRef.current = true;
 
+    const roundedFuelNeeded = roundToTwoDecimalPlaces(fuelNeeded);
+    const roundedFuelEconomy = roundToTwoDecimalPlaces(fuelEconomy);
+    setFuelNeeded(roundedFuelNeeded);
+    setFuelEconomy(roundedFuelEconomy);
     const nextFuelType = normalizeFuelType(fuelType);
     const nextBrands = normalizeBrands(selectedBrands);
     setFuelType(nextFuelType);
@@ -845,8 +884,8 @@ export default function App() {
       await saveUserPreferences({
         appMode,
         useCurrentLocation,
-        fuelNeeded,
-        fuelEconomy,
+        fuelNeeded: roundedFuelNeeded,
+        fuelEconomy: roundedFuelEconomy,
         fuelType: nextFuelType,
         selectedBrands: nextBrands,
         tripDestination: nextTripDestination,
@@ -858,8 +897,8 @@ export default function App() {
       setSavedSettingsSnapshot({
         appMode,
         useCurrentLocation,
-        fuelNeeded: fuelNeeded.trim(),
-        fuelEconomy: fuelEconomy.trim(),
+        fuelNeeded: roundedFuelNeeded.trim(),
+        fuelEconomy: roundedFuelEconomy.trim(),
         fuelType: nextFuelType,
         selectedBrands: nextBrands,
         tripStartAddress: startAddress,
@@ -871,7 +910,6 @@ export default function App() {
       settingsSaveInFlightRef.current = false;
       return;
     }
-    setActiveTab('prices');
     setIsStartInputFocused(false);
     setIsDestinationInputFocused(false);
     setStartSuggestions([]);
@@ -881,8 +919,8 @@ export default function App() {
       fetchAndRankTripDataRef.current(
         nextTripStart,
         nextTripDestination,
-        fuelNeeded,
-        fuelEconomy,
+        roundedFuelNeeded,
+        roundedFuelEconomy,
         nextFuelType,
         nextBrands
       );
@@ -890,8 +928,8 @@ export default function App() {
       fetchAndRankFuelDataRef.current(
         nextTripStart.latitude,
         nextTripStart.longitude,
-        fuelNeeded,
-        fuelEconomy,
+        roundedFuelNeeded,
+        roundedFuelEconomy,
         nextFuelType,
         nextBrands
       );
@@ -1362,7 +1400,7 @@ export default function App() {
   }, [savedSettingsSnapshot, currentSettingsSnapshot]);
 
   return (
-    <SafeAreaProvider>
+    <>
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} backgroundColor="transparent" />
       <SafeAreaView style={styles.container} edges={['left', 'right']}>
 
@@ -1729,9 +1767,14 @@ export default function App() {
                     <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Needed (Litres)</Text>
                     <TextInput
                       style={styles.inlineInput}
-                      keyboardType="numeric"
+                      keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'}
                       value={fuelNeeded}
                       onChangeText={setFuelNeeded}
+                      onBlur={() => setFuelNeeded((prev) => roundToTwoDecimalPlaces(prev))}
+                      returnKeyType="done"
+                      blurOnSubmit
+                      onSubmitEditing={() => Keyboard.dismiss()}
+                      keyboardAppearance={themeMode}
                       placeholder="e.g. 50"
                       placeholderTextColor={palette.placeholder}
                     />
@@ -1740,9 +1783,14 @@ export default function App() {
                     <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Economy (L/100km)</Text>
                     <TextInput
                       style={styles.inlineInput}
-                      keyboardType="numeric"
+                      keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'}
                       value={fuelEconomy}
                       onChangeText={setFuelEconomy}
+                      onBlur={() => setFuelEconomy((prev) => roundToTwoDecimalPlaces(prev))}
+                      returnKeyType="done"
+                      blurOnSubmit
+                      onSubmitEditing={() => Keyboard.dismiss()}
+                      keyboardAppearance={themeMode}
                       placeholder="e.g. 8.0"
                       placeholderTextColor={palette.placeholder}
                     />
@@ -1797,27 +1845,39 @@ export default function App() {
                 <View style={styles.summarySingleRow}>
                   {canUseLiquidGlass ? (
                     <>
-                      <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
-                        <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
-                      </GlassView>
-                      <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
-                        <Text style={styles.summaryChipText}>{appliedFuelType}</Text>
-                      </GlassView>
-                      <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
-                        <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
-                      </GlassView>
+                      <TouchableOpacity onPress={() => navigateToTab('settings')} accessibilityRole="button" accessibilityLabel="Open settings">
+                        <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
+                          <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
+                        </GlassView>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => navigateToTab('settings')} accessibilityRole="button" accessibilityLabel="Open settings">
+                        <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
+                          <Text style={styles.summaryChipText}>{appliedFuelType}</Text>
+                        </GlassView>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => navigateToTab('settings')} accessibilityRole="button" accessibilityLabel="Open settings">
+                        <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
+                          <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
+                        </GlassView>
+                      </TouchableOpacity>
                     </>
                   ) : (
                     <>
-                      <View style={styles.summaryChip}>
-                        <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
-                      </View>
-                      <View style={styles.summaryChip}>
-                        <Text style={styles.summaryChipText}>{appliedFuelType}</Text>
-                      </View>
-                      <View style={styles.summaryChip}>
-                        <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
-                      </View>
+                      <TouchableOpacity onPress={() => navigateToTab('settings')} accessibilityRole="button" accessibilityLabel="Open settings">
+                        <View style={styles.summaryChip}>
+                          <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => navigateToTab('settings')} accessibilityRole="button" accessibilityLabel="Open settings">
+                        <View style={styles.summaryChip}>
+                          <Text style={styles.summaryChipText}>{appliedFuelType}</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => navigateToTab('settings')} accessibilityRole="button" accessibilityLabel="Open settings">
+                        <View style={styles.summaryChip}>
+                          <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
+                        </View>
+                      </TouchableOpacity>
                     </>
                   )}
                 </View>
@@ -1829,52 +1889,56 @@ export default function App() {
                     <Text style={styles.title}>Preferences</Text>
                     <Text style={styles.subtitle}>Scroll to see all options.</Text>
                   </View>
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel="Save settings"
-                    onPress={() => {
-                      void handleSaveSettings();
-                    }}
-                    disabled={loading || !hasPendingSettingsChanges}
-                    style={styles.headerSaveButton}
-                  >
-                    {loading || !hasPendingSettingsChanges ? (
-                      canUseLiquidGlass ? (
-                        <GlassView style={styles.headerSaveGlass} glassEffectStyle="clear">
-                          <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
+                  {hasPendingSettingsChanges ? (
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="Save settings"
+                      onPress={() => {
+                        void handleSaveSettings();
+                      }}
+                      disabled={loading}
+                      style={styles.headerSaveButton}
+                    >
+                      {loading ? (
+                        canUseLiquidGlass ? (
+                          <GlassView style={styles.headerSaveGlass} glassEffectStyle="clear">
+                            <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
+                          </GlassView>
+                        ) : (
+                          <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonDisabled]}>
+                            <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
+                          </View>
+                        )
+                      ) : canUseLiquidGlass ? (
+                        <GlassView style={styles.headerSaveGlass} glassEffectStyle="regular">
+                          <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextEnabled]}>Save</Text>
                         </GlassView>
                       ) : (
-                        <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonDisabled]}>
-                          <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
+                        <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonEnabled]}>
+                          <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextEnabled]}>Save</Text>
                         </View>
-                      )
-                    ) : canUseLiquidGlass ? (
-                      <GlassView style={styles.headerSaveGlass} glassEffectStyle="regular">
-                        <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextEnabled]}>Save</Text>
-                      </GlassView>
-                    ) : (
-                      <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonEnabled]}>
-                        <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextEnabled]}>Save</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </>
             )}
           </View>
         </View>
 
-        <FloatingBottomNav
-          tabs={bottomNavTabs}
-          activeTab={activeTab}
-          onTabPress={setActiveTab}
-          canUseLiquidGlass={canUseLiquidGlass}
-          bottomInset={bottomNavInset}
-          selectedColor={palette.primary}
-          unselectedColor={palette.metaHint}
-          styles={styles}
-        />
+        {!hideBottomNav ? (
+          <FloatingBottomNav
+            tabs={bottomNavTabs}
+            activeTab={activeTab}
+            onTabPress={navigateToTab}
+            canUseLiquidGlass={canUseLiquidGlass}
+            bottomInset={bottomNavInset}
+            selectedColor={palette.primary}
+            unselectedColor={palette.metaHint}
+            styles={styles}
+          />
+        ) : null}
       </SafeAreaView>
-    </SafeAreaProvider>
+    </>
   );
 }

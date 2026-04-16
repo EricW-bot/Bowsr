@@ -234,7 +234,7 @@ export function createThemedStyles(c: Palette) {
       elevation: 3
     },
     cardGlassBackground: {
-      ...StyleSheet.absoluteFillObject
+      ...StyleSheet.absoluteFill
     },
     cardContent: {
       padding: 14
@@ -330,7 +330,7 @@ export function createThemedStyles(c: Palette) {
     },
     settingsPageContent: {
       paddingTop: 8,
-      gap: 14
+      gap: 12
     },
     settingsHeaderRow: {
       flexDirection: 'row',
@@ -393,10 +393,10 @@ export function createThemedStyles(c: Palette) {
       padding: 14,
       backgroundColor: c.cardBg,
       shadowColor: c.cardShadow,
-      shadowOffset: { width: 0, height: 7 },
-      shadowOpacity: 0.12,
-      shadowRadius: 10,
-      elevation: 3
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 2
     },
     settingsSectionGlass: {
       borderWidth: 1,
@@ -404,13 +404,13 @@ export function createThemedStyles(c: Palette) {
       borderRadius: 12,
       overflow: 'hidden',
       shadowColor: c.cardShadow,
-      shadowOffset: { width: 0, height: 7 },
-      shadowOpacity: 0.12,
-      shadowRadius: 10,
-      elevation: 3
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 2
     },
     settingsSectionGlassBackground: {
-      ...StyleSheet.absoluteFillObject
+      ...StyleSheet.absoluteFill
     },
     settingsSectionContent: {
       padding: 14

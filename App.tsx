@@ -17,7 +17,6 @@ import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-
 import { StatusBar } from 'expo-status-bar';
 import { ThemedGlassView, canUseLiquidGlass } from './components/ThemedGlassView';
 import { GlassView } from 'expo-glass-effect';
-import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
@@ -126,8 +125,8 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   // Keep `activeTab` derived to avoid redundant internal state updates.
   const activeTab: AppTab = hideBottomNav ? initialTab : activeTabState;
   const [headerContentHeights, setHeaderContentHeights] = useState<Record<AppTab, number>>({
-    prices: 84,
-    settings: 84
+    prices: 100,
+    settings: 100
   });
   const [savedSettingsSnapshot, setSavedSettingsSnapshot] = useState<SettingsSnapshot | null>(null);
   const [appMode, setAppMode] = useState<AppMode>('roundTrip');
@@ -177,8 +176,8 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
       };
 
       if (!useCurrentLocation) {
-         if (!selectedStartAddress?.coordinates) return;
-         nextTripStart = selectedStartAddress.coordinates;
+        if (!selectedStartAddress?.coordinates) return;
+        nextTripStart = selectedStartAddress.coordinates;
       }
 
       if (appMode === 'oneWay') {
@@ -279,7 +278,11 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const scrollBottomPadding = hideBottomNav ? insets.bottom : bottomNavHeight + 8;
   const statusBarInset = Constants.statusBarHeight ?? 0;
   const headerTopOffset = statusBarInset;
-  const topHeaderHeight = headerTopOffset + (headerContentHeights[activeTab] ?? 84) + 20;
+  // Shaved off all remaining layout padding to force the solid line tightest to the top
+  const topHeaderHeight = headerTopOffset + (headerContentHeights[activeTab] ?? 84);
+
+  const bgRgbaSolid = themeMode === 'light' ? 'rgba(238, 242, 247, 1)' : 'rgba(15, 20, 25, 1)';
+  const bgRgbaTransparent = themeMode === 'light' ? 'rgba(238, 242, 247, 0)' : 'rgba(15, 20, 25, 0)';
 
   useEffect(() => {
     void SystemUI.setBackgroundColorAsync(palette.bg);
@@ -572,19 +575,19 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
         setSelectedStartAddress(
           prefs.tripStartAddress.trim().length > 0
             ? {
-                id: `saved-start-${prefs.tripStartAddress.trim().toLowerCase()}`,
-                label: prefs.tripStartAddress.trim(),
-                coordinates: prefs.tripStart
-              }
+              id: `saved-start-${prefs.tripStartAddress.trim().toLowerCase()}`,
+              label: prefs.tripStartAddress.trim(),
+              coordinates: prefs.tripStart
+            }
             : null
         );
         setSelectedDestinationAddress(
           prefs.tripDestinationAddress.trim().length > 0
             ? {
-                id: `saved-dest-${prefs.tripDestinationAddress.trim().toLowerCase()}`,
-                label: prefs.tripDestinationAddress.trim(),
-                coordinates: prefs.tripDestination
-              }
+              id: `saved-dest-${prefs.tripDestinationAddress.trim().toLowerCase()}`,
+              label: prefs.tripDestinationAddress.trim(),
+              coordinates: prefs.tripDestination
+            }
             : null
         );
 
@@ -611,9 +614,9 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
 
           const oneWayStart = prefs.useCurrentLocation
             ? {
-                latitude: location?.coords.latitude ?? 0,
-                longitude: location?.coords.longitude ?? 0
-              }
+              latitude: location?.coords.latitude ?? 0,
+              longitude: location?.coords.longitude ?? 0
+            }
             : prefs.tripStart;
 
           await fetchAndRankTripDataRef.current(
@@ -634,9 +637,9 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
 
           const roundTripStart = prefs.useCurrentLocation
             ? {
-                latitude: location?.coords.latitude ?? 0,
-                longitude: location?.coords.longitude ?? 0
-              }
+              latitude: location?.coords.latitude ?? 0,
+              longitude: location?.coords.longitude ?? 0
+            }
             : prefs.tripStart;
 
           await fetchAndRankFuelDataRef.current(
@@ -851,13 +854,13 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
               <Ionicons name="navigate-outline" size={12} color={palette.metaHint} />
               <Text style={styles.statLabel}>{appMode === 'oneWay' ? 'Trip Route' : 'Route'}</Text>
             </View>
-              <Text style={styles.statValue}>
-                {appMode === 'oneWay'
-                  ? `${item.tripWithStopKm?.toFixed(1) ?? item.distanceKm.toFixed(1)} km`
-                  : `${item.distanceKm.toFixed(1)} km`}
-                {appMode === 'oneWay' && item.detourKm !== undefined ? `\n(+${item.detourKm.toFixed(1)} detour)` : ''}
-                {item.durationMin > 0 ? `\n(${Math.round(item.durationMin)} min)` : ''}
-              </Text>
+            <Text style={styles.statValue}>
+              {appMode === 'oneWay'
+                ? `${item.tripWithStopKm?.toFixed(1) ?? item.distanceKm.toFixed(1)} km`
+                : `${item.distanceKm.toFixed(1)} km`}
+              {appMode === 'oneWay' && item.detourKm !== undefined ? `\n(+${item.detourKm.toFixed(1)} detour)` : ''}
+              {item.durationMin > 0 ? `\n(${Math.round(item.durationMin)} min)` : ''}
+            </Text>
           </View>
           <View style={[styles.statBox, styles.highlightBox]}>
             <View style={styles.statLabelRow}>
@@ -923,13 +926,13 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const renderSettingsSection = useCallback(
     (children: React.ReactNode) => {
       return canUseLiquidGlass ? (
-          <View style={styles.settingsSectionGlass}>
-            <GlassView style={styles.settingsSectionGlassBackground} glassEffectStyle="regular" />
-            <View style={styles.settingsSectionContent}>{children}</View>
-          </View>
-        ) : (
-          <View style={styles.settingsSection}>{children}</View>
-        );
+        <View style={styles.settingsSectionGlass}>
+          <GlassView style={styles.settingsSectionGlassBackground} glassEffectStyle="regular" />
+          <View style={styles.settingsSectionContent}>{children}</View>
+        </View>
+      ) : (
+        <View style={styles.settingsSection}>{children}</View>
+      );
     },
     [styles]
   );
@@ -1039,9 +1042,9 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
     let cancelled = false;
     const stationPoint = mapStation
       ? {
-          latitude: mapStation.location.latitude,
-          longitude: mapStation.location.longitude
-        }
+        latitude: mapStation.location.latitude,
+        longitude: mapStation.location.longitude
+      }
       : null;
 
     if (Platform.OS === 'web' || appMode !== 'oneWay' || !oneWayStartPoint || !stationPoint) {
@@ -1067,9 +1070,9 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
     let cancelled = false;
     const stationPoint = mapStation
       ? {
-          latitude: mapStation.location.latitude,
-          longitude: mapStation.location.longitude
-        }
+        latitude: mapStation.location.latitude,
+        longitude: mapStation.location.longitude
+      }
       : null;
 
     if (Platform.OS === 'web' || appMode !== 'roundTrip' || !roundTripStartPoint || !stationPoint) {
@@ -1103,44 +1106,44 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
     () =>
       appMode === 'oneWay' && oneWayStartPoint && mapStation
         ? [
+          {
+            id: 'one-way-route',
+            coordinates: [
+              ...(oneWayRouteGeometry ?? [
+                oneWayStartPoint,
+                {
+                  latitude: mapStation.location.latitude,
+                  longitude: mapStation.location.longitude
+                },
+                {
+                  latitude: tripDestination.latitude,
+                  longitude: tripDestination.longitude
+                }
+              ])
+            ],
+            color: palette.primary,
+            width: 4
+          }
+        ]
+        : appMode === 'roundTrip' && roundTripStartPoint && mapStation
+          ? [
             {
-              id: 'one-way-route',
+              id: 'round-trip-route',
               coordinates: [
-                ...(oneWayRouteGeometry ?? [
-                  oneWayStartPoint,
+                ...(roundTripRouteGeometry ?? [
+                  roundTripStartPoint,
                   {
                     latitude: mapStation.location.latitude,
                     longitude: mapStation.location.longitude
                   },
-                  {
-                    latitude: tripDestination.latitude,
-                    longitude: tripDestination.longitude
-                  }
+                  roundTripStartPoint
                 ])
               ],
               color: palette.primary,
               width: 4
             }
           ]
-        : appMode === 'roundTrip' && roundTripStartPoint && mapStation
-          ? [
-              {
-                id: 'round-trip-route',
-                coordinates: [
-                  ...(roundTripRouteGeometry ?? [
-                    roundTripStartPoint,
-                    {
-                      latitude: mapStation.location.latitude,
-                      longitude: mapStation.location.longitude
-                    },
-                    roundTripStartPoint
-                  ])
-                ],
-                color: palette.primary,
-                width: 4
-              }
-            ]
-        : [],
+          : [],
     [
       appMode,
       mapStation,
@@ -1286,7 +1289,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
               <Text style={styles.loadingText}>Calculating optimal routes...</Text>
             </View>
           ) : (
-            <PricesTab style={[styles.listContainer, { paddingTop: topHeaderHeight, paddingBottom: 0 }]}>
+            <PricesTab style={[styles.listContainer, { paddingTop: topHeaderHeight + 8, paddingBottom: 0 }]}>
               <ScrollView
                 refreshControl={
                   <RefreshControl
@@ -1314,7 +1317,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
             </PricesTab>
           )
         ) : (
-          <SettingsTab style={[styles.listContainer, { paddingTop: topHeaderHeight, paddingBottom: 0 }]}>
+          <SettingsTab style={[styles.listContainer, { paddingTop: topHeaderHeight + 8, paddingBottom: 0 }]}>
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
@@ -1328,215 +1331,208 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 nestedScrollEnabled
               >
-              {renderSettingsSection(
-                <>
-                  <View style={styles.settingsSectionHeader}>
-                    <Ionicons name="map-outline" size={16} color={palette.title} />
-                    <Text style={styles.settingsSectionTitle}>Trip Mode</Text>
-                  </View>
-                  <Text style={styles.inputLabel}>Mode</Text>
-                  <View style={styles.modeCardRow}>
-                    {(['roundTrip', 'oneWay'] as AppMode[]).map((modeOption) => {
-                      const selected = appMode === modeOption;
-                      return (
-                        <TouchableOpacity
-                          key={modeOption}
-                          style={[styles.modeCard, selected && styles.modeCardSelected]}
-                          onPress={() => setAppMode(modeOption)}
-                        >
-                          <Ionicons
-                            name={modeOption === 'roundTrip' ? 'repeat-outline' : 'navigate-outline'}
-                            size={18}
-                            color={selected ? palette.chipTextSelected : palette.chipText}
-                          />
-                          <Text style={[styles.modeCardTitle, selected && styles.fuelTypeChipTextSelected]}>
-                            {modeOption === 'roundTrip' ? 'Round-trip' : 'One-way'}
-                          </Text>
-                          <Text style={[styles.modeCardHint, selected && styles.fuelTypeChipTextSelected]}>
-                            {modeOption === 'roundTrip' ? 'Nearby station ranking' : 'Route-aware stop planning'}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                {renderSettingsSection(
+                  <>
+                    <View style={styles.settingsSectionHeader}>
+                      <Ionicons name="map-outline" size={16} color={palette.title} />
+                      <Text style={styles.settingsSectionTitle}>Trip Mode</Text>
+                    </View>
+                    <Text style={styles.inputLabel}>Mode</Text>
+                    <View style={styles.modeCardRow}>
+                      {(['roundTrip', 'oneWay'] as AppMode[]).map((modeOption) => {
+                        const selected = appMode === modeOption;
+                        return (
+                          <TouchableOpacity
+                            key={modeOption}
+                            style={[styles.modeCard, selected && styles.modeCardSelected]}
+                            onPress={() => setAppMode(modeOption)}
+                          >
+                            <Ionicons
+                              name={modeOption === 'roundTrip' ? 'repeat-outline' : 'navigate-outline'}
+                              size={18}
+                              color={selected ? palette.chipTextSelected : palette.chipText}
+                            />
+                            <Text style={[styles.modeCardTitle, selected && styles.fuelTypeChipTextSelected]}>
+                              {modeOption === 'roundTrip' ? 'Round-trip' : 'One-way'}
+                            </Text>
+                            <Text style={[styles.modeCardHint, selected && styles.fuelTypeChipTextSelected]}>
+                              {modeOption === 'roundTrip' ? 'Nearby station ranking' : 'Route-aware stop planning'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
 
-                  <Text style={styles.inputLabel}>Start Point Source</Text>
-                  <View style={[styles.sourceToggleRow, { marginBottom: 0 }]}>
-                    {[true, false].map((option) => {
-                      const selected = useCurrentLocation === option;
-                      return (
-                        <TouchableOpacity
-                          key={option ? 'use-location' : 'use-addresses'}
-                          style={[styles.sourceToggleButton, selected && styles.sourceToggleButtonSelected]}
-                          onPress={() => setUseCurrentLocation(option)}
-                        >
-                          <Text style={[styles.sourceToggleText, selected && styles.sourceToggleTextSelected]}>
-                            {option ? 'Use my location' : 'Use start address'}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </>
-              )}
+                    <Text style={styles.inputLabel}>Start Point Source</Text>
+                    <View style={[styles.sourceToggleRow, { marginBottom: 0 }]}>
+                      {[true, false].map((option) => {
+                        const selected = useCurrentLocation === option;
+                        return (
+                          <TouchableOpacity
+                            key={option ? 'use-location' : 'use-addresses'}
+                            style={[styles.sourceToggleButton, selected && styles.sourceToggleButtonSelected]}
+                            onPress={() => setUseCurrentLocation(option)}
+                          >
+                            <Text style={[styles.sourceToggleText, selected && styles.sourceToggleTextSelected]}>
+                              {option ? 'Use my location' : 'Use start address'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
 
-              {!useCurrentLocation ? (
-                renderSettingsSection(
-                <>
-                  <View style={styles.settingsSectionHeader}>
-                    <Ionicons name="pin-outline" size={16} color={palette.title} />
-                    <Text style={styles.settingsSectionTitle}>Start Address</Text>
-                  </View>
-                  <Text style={styles.inputLabel}>Start Address</Text>
-                  <AddressSuggestionInput
-                    ui={{
-                      value: tripStartAddress,
-                      isFocused: isStartInputFocused,
-                      suggestions: startSuggestions,
-                      statusText: startStatusText,
-                      statusOk: startAddressSelected,
-                      metaHintText: searchingStart ? "Searching addresses..." : null
-                    }}
-                    onChangeText={startAddressPicker.handleChangeText}
-                    onFocus={() => setIsStartInputFocused(true)}
-                    onBlur={startAddressPicker.handleBlur}
-                    placeholder="Enter start address"
-                    placeholderTextColor={palette.placeholder}
-                    inputStyle={styles.input}
-                    statusOkTextStyle={styles.addressStatusTextOk}
-                    styles={styles}
-                    keyPrefix="start"
-                    onPressInSuggestion={() => {
-                      isSelectingSuggestionRef.current = true;
-                    }}
-                    onSelectSuggestion={(suggestion) => {
-                      startAddressPicker.applySuggestion(suggestion, 'list');
-                    }}
-                  />
-                </>
-                )
-              ) : null}
-
-              {appMode === 'oneWay' ? (
-                renderSettingsSection(
-                <>
-                  <View style={styles.settingsSectionHeader}>
-                    <Ionicons name="flag-outline" size={16} color={palette.title} />
-                    <Text style={styles.settingsSectionTitle}>Destination</Text>
-                  </View>
-                  <Text style={styles.inputLabel}>Destination Address</Text>
-                  <AddressSuggestionInput
-                    ui={{
-                      value: tripDestinationAddress,
-                      isFocused: isDestinationInputFocused,
-                      suggestions: destinationSuggestions,
-                      statusText: destinationStatusText ?? "",
-                      statusOk: destinationAddressSelected,
-                      metaHintText: searchingDestination ? "Searching addresses..." : null
-                    }}
-                    onChangeText={destinationAddressPicker.handleChangeText}
-                    onFocus={() => setIsDestinationInputFocused(true)}
-                    onBlur={destinationAddressPicker.handleBlur}
-                    placeholder="Enter destination address"
-                    placeholderTextColor={palette.placeholder}
-                    inputStyle={styles.input}
-                    statusOkTextStyle={styles.addressStatusTextOk}
-                    styles={styles}
-                    keyPrefix="dest"
-                    onPressInSuggestion={() => {
-                      isSelectingSuggestionRef.current = true;
-                    }}
-                    onSelectSuggestion={(suggestion) => {
-                      destinationAddressPicker.applySuggestion(suggestion, 'list');
-                    }}
-                  />
-                </>
-                )
-              ) : null}
-
-              {renderSettingsSection(
-              <>
-                <View style={styles.settingsSectionHeader}>
-                  <Ionicons name="car-sport-outline" size={16} color={palette.title} />
-                  <Text style={styles.settingsSectionTitle}>Vehicle & Fuel</Text>
-                </View>
-                <View style={styles.inlineInputsRow}>
-                  <View style={styles.inlineInputCol}>
-                    <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Needed (Litres)</Text>
-                      <RoundedNumericInput
-                        value={fuelNeeded}
-                        onChangeText={setFuelNeeded}
-                        inputStyle={styles.inlineInput}
-                        keyboardAppearance={themeMode}
-                        placeholder="e.g. 50"
+                {!useCurrentLocation ? (
+                  renderSettingsSection(
+                    <>
+                      <View style={styles.settingsSectionHeader}>
+                        <Ionicons name="pin-outline" size={16} color={palette.title} />
+                        <Text style={styles.settingsSectionTitle}>Start Address</Text>
+                      </View>
+                      <Text style={styles.inputLabel}>Start Address</Text>
+                      <AddressSuggestionInput
+                        ui={{
+                          value: tripStartAddress,
+                          isFocused: isStartInputFocused,
+                          suggestions: startSuggestions,
+                          statusText: startStatusText,
+                          statusOk: startAddressSelected,
+                          metaHintText: searchingStart ? "Searching addresses..." : null
+                        }}
+                        onChangeText={startAddressPicker.handleChangeText}
+                        onFocus={() => setIsStartInputFocused(true)}
+                        onBlur={startAddressPicker.handleBlur}
+                        placeholder="Enter start address"
                         placeholderTextColor={palette.placeholder}
+                        inputStyle={styles.input}
+                        statusOkTextStyle={styles.addressStatusTextOk}
+                        styles={styles}
+                        keyPrefix="start"
+                        onPressInSuggestion={() => {
+                          isSelectingSuggestionRef.current = true;
+                        }}
+                        onSelectSuggestion={(suggestion) => {
+                          startAddressPicker.applySuggestion(suggestion, 'list');
+                        }}
                       />
-                  </View>
-                  <View style={styles.inlineInputCol}>
-                    <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Economy (L/100km)</Text>
-                      <RoundedNumericInput
-                        value={fuelEconomy}
-                        onChangeText={setFuelEconomy}
-                        inputStyle={styles.inlineInput}
-                        keyboardAppearance={themeMode}
-                        placeholder="e.g. 8.0"
+                    </>
+                  )
+                ) : null}
+
+                {appMode === 'oneWay' ? (
+                  renderSettingsSection(
+                    <>
+                      <View style={styles.settingsSectionHeader}>
+                        <Ionicons name="flag-outline" size={16} color={palette.title} />
+                        <Text style={styles.settingsSectionTitle}>Destination</Text>
+                      </View>
+                      <Text style={styles.inputLabel}>Destination Address</Text>
+                      <AddressSuggestionInput
+                        ui={{
+                          value: tripDestinationAddress,
+                          isFocused: isDestinationInputFocused,
+                          suggestions: destinationSuggestions,
+                          statusText: destinationStatusText ?? "",
+                          statusOk: destinationAddressSelected,
+                          metaHintText: searchingDestination ? "Searching addresses..." : null
+                        }}
+                        onChangeText={destinationAddressPicker.handleChangeText}
+                        onFocus={() => setIsDestinationInputFocused(true)}
+                        onBlur={destinationAddressPicker.handleBlur}
+                        placeholder="Enter destination address"
                         placeholderTextColor={palette.placeholder}
+                        inputStyle={styles.input}
+                        statusOkTextStyle={styles.addressStatusTextOk}
+                        styles={styles}
+                        keyPrefix="dest"
+                        onPressInSuggestion={() => {
+                          isSelectingSuggestionRef.current = true;
+                        }}
+                        onSelectSuggestion={(suggestion) => {
+                          destinationAddressPicker.applySuggestion(suggestion, 'list');
+                        }}
                       />
-                  </View>
-                </View>
+                    </>
+                  )
+                ) : null}
 
-                <Text style={styles.inputLabel}>Fuel Type</Text>
-                <View style={styles.fuelTypeRow}>
-                  {FUEL_TYPE_OPTIONS.map((option) => {
-                    const selected = fuelType === option;
-                    return (
-                      <TouchableOpacity
-                        key={option}
-                        style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
-                        onPress={() => setFuelType(option)}
-                      >
-                        <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>{option}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                {renderSettingsSection(
+                  <>
+                    <View style={styles.settingsSectionHeader}>
+                      <Ionicons name="car-sport-outline" size={16} color={palette.title} />
+                      <Text style={styles.settingsSectionTitle}>Vehicle & Fuel</Text>
+                    </View>
+                    <View style={styles.inlineInputsRow}>
+                      <View style={styles.inlineInputCol}>
+                        <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Needed (Litres)</Text>
+                        <RoundedNumericInput
+                          value={fuelNeeded}
+                          onChangeText={setFuelNeeded}
+                          inputStyle={styles.inlineInput}
+                          keyboardAppearance={themeMode}
+                          placeholder="e.g. 50"
+                          placeholderTextColor={palette.placeholder}
+                        />
+                      </View>
+                      <View style={styles.inlineInputCol}>
+                        <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Economy (L/100km)</Text>
+                        <RoundedNumericInput
+                          value={fuelEconomy}
+                          onChangeText={setFuelEconomy}
+                          inputStyle={styles.inlineInput}
+                          keyboardAppearance={themeMode}
+                          placeholder="e.g. 8.0"
+                          placeholderTextColor={palette.placeholder}
+                        />
+                      </View>
+                    </View>
 
-                <Text style={styles.inputLabel}>Brands (Optional)</Text>
-                <View style={[styles.fuelTypeRow, { marginBottom: 0 }]}>
-                  {BRAND_OPTIONS.map((option) => {
-                    const selected = selectedBrands.includes(option);
-                    return (
-                      <TouchableOpacity
-                        key={option}
-                        style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
-                        onPress={() => toggleBrandSelection(option)}
-                      >
-                        <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>{option}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </>
-              )}
+                    <Text style={styles.inputLabel}>Fuel Type</Text>
+                    <View style={styles.fuelTypeRow}>
+                      {FUEL_TYPE_OPTIONS.map((option) => {
+                        const selected = fuelType === option;
+                        return (
+                          <TouchableOpacity
+                            key={option}
+                            style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
+                            onPress={() => setFuelType(option)}
+                          >
+                            <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>{option}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <Text style={styles.inputLabel}>Brands (Optional)</Text>
+                    <View style={[styles.fuelTypeRow, { marginBottom: 0 }]}>
+                      {BRAND_OPTIONS.map((option) => {
+                        const selected = selectedBrands.includes(option);
+                        return (
+                          <TouchableOpacity
+                            key={option}
+                            style={[styles.fuelTypeChip, selected && styles.fuelTypeChipSelected]}
+                            onPress={() => toggleBrandSelection(option)}
+                          >
+                            <Text style={[styles.fuelTypeChipText, selected && styles.fuelTypeChipTextSelected]}>{option}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
 
               </ScrollView>
             </KeyboardAvoidingView>
           </SettingsTab>
         )}
 
-        <View pointerEvents="none" style={[styles.headerVignette, { height: topHeaderHeight + 40 }]}>
-          <MaskedView
+        <View pointerEvents="none" style={[styles.headerVignette, { height: topHeaderHeight + 15 }]}>
+          <LinearGradient
+            colors={[bgRgbaSolid, bgRgbaSolid, bgRgbaTransparent]}
+            locations={[0, topHeaderHeight / (topHeaderHeight + 15), 1]}
             style={{ flex: 1 }}
-            maskElement={
-              <LinearGradient
-                colors={['rgba(0,0,0,1)', 'rgba(0,0,0,1)', 'rgba(0,0,0,0)']}
-                locations={[0, 0.7, 1]}
-                style={{ flex: 1 }}
-              />
-            }
-          >
-            <ThemedGlassView style={{ flex: 1 }} glassEffectStyle="regular" fallbackStyle={{ backgroundColor: palette.bg }} />
-          </MaskedView>
+          />
         </View>
 
         <View pointerEvents="box-none" style={[styles.headerOverlayContainer, { top: headerTopOffset }]}>
@@ -1598,7 +1594,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                 />
               </>
             )}
-            </View>
+          </View>
         </View>
 
         {!hideBottomNav ? (

@@ -142,7 +142,8 @@ export function createThemedStyles(c: Palette) {
     headerPlainContent: {
       paddingHorizontal: 2,
       paddingVertical: 2,
-      paddingTop: 10
+      paddingTop: 10,
+      paddingBottom: 8,
     },
     headerVignette: {
       position: 'absolute',

@@ -1312,15 +1312,15 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
             </PricesTab>
           )
         ) : (
-          <SettingsTab style={[styles.settingsPageWrap]}>
+          <SettingsTab style={[styles.listContainer, { paddingTop: topHeaderHeight, paddingBottom: 0 }]}>
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
-              style={styles.settingsPageWrap}
+              style={{ flex: 1 }}
             >
               <ScrollView
-                style={styles.settingsPageScroll}
-                contentContainerStyle={[styles.settingsPageContent, { paddingTop: topHeaderHeight, paddingBottom: scrollBottomPadding }]}
+                style={{ flex: 1 }}
+                contentContainerStyle={[styles.settingsPageContent, { paddingTop: 0, paddingBottom: 16 }]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="always"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}

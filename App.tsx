@@ -1257,7 +1257,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
 
   return (
     <>
-      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} backgroundColor="transparent" />
+      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={styles.container} edges={['left', 'right']}>
 
         <MapStationModal

@@ -1,20 +1,14 @@
-import React from 'react';
-import { router, useFocusEffect } from 'expo-router';
+import React, { useSyncExternalStore } from 'react';
+import { router } from 'expo-router';
 import App from '../App';
-import { useCallback, useState } from 'react';
+import { getSettingsVersion, subscribeSettingsVersion } from '../settingsSync';
 
 export default function PricesRoute() {
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  useFocusEffect(
-    useCallback(() => {
-      setRefreshKey((prev) => prev + 1);
-    }, [])
-  );
+  const settingsVersion = useSyncExternalStore(subscribeSettingsVersion, getSettingsVersion);
 
   return (
     <App
-      key={refreshKey}
+      key={settingsVersion}
       initialTab="prices"
       hideBottomNav
       onNavigateToTab={(tab) => {

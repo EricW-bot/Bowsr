@@ -1,6 +1,7 @@
 import React from 'react';
 import { router } from 'expo-router';
 import App from '../App';
+import { bumpSettingsVersion } from '../settingsSync';
 
 export default function SettingsRoute() {
   return (
@@ -12,6 +13,7 @@ export default function SettingsRoute() {
           router.push('/');
         }
       }}
+      onSettingsSaved={bumpSettingsVersion}
     />
   );
 }

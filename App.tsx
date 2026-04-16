@@ -4,10 +4,7 @@ import {
   View,
   ScrollView,
   ActivityIndicator,
-  Modal,
-  TextInput,
   TouchableOpacity,
-  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -33,15 +30,24 @@ import {
 } from './constants';
 import { fetchNearbyFuelData, getAccessToken } from './clients/fuelApiClient';
 import { fetchAddressSuggestions, resolveAddress, resolveAddressByPlaceId, type AddressSuggestion } from './clients/geocodingClient';
-import type { AppMode, AppTab, Coordinates, FuelApiData, RankedStation, TabDefinition } from './Interface';
+import type {
+  AppMode,
+  AppTab,
+  Coordinates,
+  ExpoMapMarker,
+  ExpoMapPolyline,
+  FuelApiData,
+  RankedStation,
+  SettingsSnapshot,
+  SettingsSnapshotInput,
+  TabDefinition
+} from './Interface';
 import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
 import { createThemedStyles, getPalette } from './theme';
 import { runTripAlgorithmValidation } from './tripValidation';
 import { getErrorMessage, normalizeBrands, normalizeFuelType, sameOrderedStringArray } from './helpers/utils';
 import {
   buildExternalMapUrl,
-  buildWebMapEmbedUrl,
-  buildWebOneWayMapEmbedUrl,
   getRoundTripStartMissingMessage,
   getTripAddressMissingMessage,
   LIVE_DATA_TIMEOUT_MS
@@ -49,88 +55,71 @@ import {
 import { getCurrentLocationWithTimeout } from './helpers/locationHelpers';
 import { fetchOneWayRouteGeometry, fetchRoundTripRouteGeometry } from './helpers/routeGeometryHelpers';
 import { FloatingBottomNav } from './components/FloatingBottomNav';
+import { SettingsHeader } from './components/SettingsHeader';
+import { MapStationModal } from './components/MapStationModal';
+import { AddressSuggestionInput } from './components/AddressSuggestionInput';
+import { RoundedNumericInput } from './components/RoundedNumericInput';
 import { PricesTab } from './tabs/PricesTab';
 import { SettingsTab } from './tabs/SettingsTab';
 
-type ExpoMapMarker = {
-  id: string;
-  coordinates: {
-    latitude: number;
-    longitude: number;
-  };
-  title?: string;
-  snippet?: string;
-};
-
-type ExpoMapPolyline = {
-  id: string;
-  coordinates: {
-    latitude: number;
-    longitude: number;
-  }[];
-  color?: string;
-  width?: number;
-};
-
-type SettingsSnapshot = {
-  appMode: AppMode;
-  useCurrentLocation: boolean;
-  fuelNeeded: string;
-  fuelEconomy: string;
-  fuelType: string;
-  selectedBrands: string[];
-  tripStartAddress: string;
-  tripDestinationAddress: string;
-};
+import { roundToTwoDecimalPlaces } from './helpers/numberFormatting';
+import { useAddressPicker } from './hooks/useAddressPicker';
 
 type AppProps = {
   initialTab?: AppTab;
   hideBottomNav?: boolean;
   onNavigateToTab?: (tab: AppTab) => void;
+  onSettingsSaved?: () => void;
 };
 
-/** One-shot text expansion typical of OS keyboard autocomplete or paste (not single-character typing). */
-function isLikelyImeAddressCommit(prev: string, value: string): boolean {
-  const trimmed = value.trim();
-  const prevTrim = prev.trim();
-  if (trimmed.length < 5 || prev === value) {
-    return false;
-  }
-  if (value.length <= prev.length) {
-    return false;
-  }
-  if (value.length - prev.length >= 4) {
-    return true;
-  }
-  return prevTrim.length >= 2 && trimmed.startsWith(prevTrim) && trimmed.length - prevTrim.length >= 5;
+function createSettingsSnapshot(input: SettingsSnapshotInput): SettingsSnapshot {
+  return {
+    appMode: input.appMode,
+    useCurrentLocation: input.useCurrentLocation,
+    fuelNeeded: input.fuelNeeded.trim(),
+    fuelEconomy: input.fuelEconomy.trim(),
+    fuelType: normalizeFuelType(input.fuelType),
+    selectedBrands: normalizeBrands(input.selectedBrands),
+    tripStartAddress: input.tripStartAddress.trim(),
+    tripDestinationAddress: input.tripDestinationAddress.trim()
+  };
 }
 
-function roundToTwoDecimalPlaces(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return '';
-  }
-  const numeric = Number(trimmed);
-  if (!Number.isFinite(numeric)) {
-    return trimmed;
-  }
-  const rounded = Math.round((numeric + Number.EPSILON) * 100) / 100;
-  return String(rounded);
+function hasSettingsSnapshotChanges(saved: SettingsSnapshot | null, current: SettingsSnapshot): boolean {
+  if (!saved) return false;
+  return !(
+    saved.appMode === current.appMode &&
+    saved.useCurrentLocation === current.useCurrentLocation &&
+    saved.fuelNeeded === current.fuelNeeded &&
+    saved.fuelEconomy === current.fuelEconomy &&
+    saved.fuelType === current.fuelType &&
+    sameOrderedStringArray(saved.selectedBrands, current.selectedBrands) &&
+    saved.tripStartAddress === current.tripStartAddress &&
+    saved.tripDestinationAddress === current.tripDestinationAddress
+  );
 }
 
-export default function App({ initialTab = 'prices', hideBottomNav = false, onNavigateToTab }: AppProps) {
+export default function App({ initialTab = 'prices', hideBottomNav = false, onNavigateToTab, onSettingsSaved }: AppProps) {
   return (
     <SafeAreaProvider>
-      <AppContent initialTab={initialTab} hideBottomNav={hideBottomNav} onNavigateToTab={onNavigateToTab} />
+      <AppContent
+        initialTab={initialTab}
+        hideBottomNav={hideBottomNav}
+        onNavigateToTab={onNavigateToTab}
+        onSettingsSaved={onSettingsSaved}
+      />
     </SafeAreaProvider>
   );
 }
 
-function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateToTab }: AppProps) {
+function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateToTab, onSettingsSaved }: AppProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const themeMode = colorScheme === 'dark' ? 'dark' : 'light';
-  const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
+  const [activeTabState, setActiveTabState] = useState<AppTab>(initialTab);
+  // In NativeTabs mode, each route renders its own screen (and this app instance never needs to swap tiles).
+  // Keep `activeTab` derived to avoid redundant internal state updates.
+  const activeTab: AppTab = hideBottomNav ? initialTab : activeTabState;
   const [headerContentHeights, setHeaderContentHeights] = useState<Record<AppTab, number>>({
     prices: 84,
     settings: 84
@@ -165,10 +154,6 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const isMountedRef = useRef(true);
   const isSelectingSuggestionRef = useRef(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const prevStartAddressForImeRef = useRef('');
-  const prevDestinationAddressForImeRef = useRef('');
-  const suppressStartSuggestionFetchRef = useRef(false);
-  const suppressDestinationSuggestionFetchRef = useRef(false);
   const latestRankingRequestIdRef = useRef(0);
   const AppleMapsView = expoMapsModule?.AppleMaps?.View;
   const GoogleMapsView = expoMapsModule?.GoogleMaps?.View;
@@ -176,15 +161,66 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const palette = useMemo(() => getPalette(themeMode), [themeMode]);
   const styles = useMemo(() => createThemedStyles(palette), [palette]);
   const isSettingsTabActive = activeTab === 'settings';
+
+  const startShouldFetchSuggestions =
+    isSettingsTabActive && !useCurrentLocation && (Platform.OS !== 'web' || isStartInputFocused);
+
+  const destinationShouldFetchSuggestions =
+    isSettingsTabActive && appMode === 'oneWay' && (Platform.OS !== 'web' || isDestinationInputFocused);
+
+  const startAddressPicker = useAddressPicker({
+    shouldFetch: startShouldFetchSuggestions,
+    value: tripStartAddress,
+    setValue: setTripStartAddress,
+    selected: selectedStartAddress,
+    setSelected: setSelectedStartAddress,
+    suggestions: startSuggestions,
+    setSuggestions: setStartSuggestions,
+    searching: searchingStart,
+    setSearching: setSearchingStart,
+    isFocused: isStartInputFocused,
+    setIsFocused: setIsStartInputFocused,
+    isSelectingSuggestionRef,
+    fetchAddressSuggestions,
+    resolveAddress,
+    resolveAddressByPlaceId
+  });
+
+  const destinationAddressPicker = useAddressPicker({
+    shouldFetch: destinationShouldFetchSuggestions,
+    value: tripDestinationAddress,
+    setValue: setTripDestinationAddress,
+    selected: selectedDestinationAddress,
+    setSelected: setSelectedDestinationAddress,
+    suggestions: destinationSuggestions,
+    setSuggestions: setDestinationSuggestions,
+    searching: searchingDestination,
+    setSearching: setSearchingDestination,
+    isFocused: isDestinationInputFocused,
+    setIsFocused: setIsDestinationInputFocused,
+    isSelectingSuggestionRef,
+    fetchAddressSuggestions,
+    resolveAddress,
+    resolveAddressByPlaceId
+  });
+
   const navigateToTab = useCallback(
     (tab: AppTab) => {
-      setActiveTab(tab);
+      // When using NativeTabs, routing remounts the correct screen.
+      // Avoid changing internal `activeTab` to reduce redundant renders/flicker.
+      if (!hideBottomNav) {
+        setActiveTabState(tab);
+      }
       onNavigateToTab?.(tab);
     },
-    [onNavigateToTab]
+    [hideBottomNav, onNavigateToTab]
   );
   const bottomNavInset = Platform.OS === 'ios' ? Math.max(insets.bottom, 8) : 6;
   const bottomNavHeight = 58 + bottomNavInset;
+  // In NativeTabs mode, use the system safe-area bottom inset directly.
+  // This prevents overscroll blank space while still leaving enough space
+  // for the native tab bar.
+  const scrollBottomPadding = hideBottomNav ? insets.bottom : bottomNavHeight + 8;
   const statusBarInset = Constants.statusBarHeight ?? 0;
   const headerTopOffset = statusBarInset;
   const topHeaderHeight = headerTopOffset + (headerContentHeights[activeTab] ?? 84) + 20;
@@ -446,182 +482,6 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const fetchAndRankTripDataRef = useRef(fetchAndRankTripData);
   fetchAndRankTripDataRef.current = fetchAndRankTripData;
 
-  const applyStartFromSuggestion = useCallback((suggestion: AddressSuggestion, source: 'list' | 'inline', initialText?: string) => {
-    const text = initialText ?? suggestion.label;
-    if (source === 'list') {
-      isSelectingSuggestionRef.current = true;
-    }
-    setTripStartAddress(text);
-    setSelectedStartAddress(suggestion);
-    let latestLabelForIme = text;
-    void (async () => {
-      try {
-        const resolved = await resolveAddressByPlaceId(suggestion.id);
-        if (resolved) {
-          latestLabelForIme = resolved.label;
-          setTripStartAddress(resolved.label);
-          setSelectedStartAddress(resolved);
-        }
-      } catch {
-        // Keep optimistic label; coordinates are validated on save.
-      } finally {
-        prevStartAddressForImeRef.current = latestLabelForIme;
-        if (source === 'list') {
-          isSelectingSuggestionRef.current = false;
-        }
-        setStartSuggestions([]);
-        setSearchingStart(false);
-        if (source === 'list') {
-          setIsStartInputFocused(false);
-          Keyboard.dismiss();
-        }
-      }
-    })();
-  }, []);
-
-  const applyDestinationFromSuggestion = useCallback((suggestion: AddressSuggestion, source: 'list' | 'inline', initialText?: string) => {
-    const text = initialText ?? suggestion.label;
-    if (source === 'list') {
-      isSelectingSuggestionRef.current = true;
-    }
-    setTripDestinationAddress(text);
-    setSelectedDestinationAddress(suggestion);
-    let latestLabelForIme = text;
-    void (async () => {
-      try {
-        const resolved = await resolveAddressByPlaceId(suggestion.id);
-        if (resolved) {
-          latestLabelForIme = resolved.label;
-          setTripDestinationAddress(resolved.label);
-          setSelectedDestinationAddress(resolved);
-        }
-      } catch {
-        // Keep optimistic label; coordinates are validated on save.
-      } finally {
-        prevDestinationAddressForImeRef.current = latestLabelForIme;
-        if (source === 'list') {
-          isSelectingSuggestionRef.current = false;
-        }
-        setDestinationSuggestions([]);
-        setSearchingDestination(false);
-        if (source === 'list') {
-          setIsDestinationInputFocused(false);
-          Keyboard.dismiss();
-        }
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const shouldFetchStartSuggestions =
-      isSettingsTabActive && !useCurrentLocation && (Platform.OS !== 'web' || isStartInputFocused);
-    if (!shouldFetchStartSuggestions) {
-      setStartSuggestions([]);
-      setSearchingStart(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-    const q = tripStartAddress.trim();
-    if (selectedStartAddress && selectedStartAddress.label.trim() === q) {
-      setStartSuggestions([]);
-      setSearchingStart(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (suppressStartSuggestionFetchRef.current) {
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (q.length < 2) {
-      setStartSuggestions([]);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        setSearchingStart(true);
-        const results = await fetchAddressSuggestions(q);
-        if (!cancelled) {
-          setStartSuggestions(results);
-        }
-      } catch {
-        if (!cancelled) {
-          setStartSuggestions([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setSearchingStart(false);
-        }
-      }
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [isSettingsTabActive, useCurrentLocation, tripStartAddress, isStartInputFocused, selectedStartAddress]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const shouldFetchDestinationSuggestions =
-      isSettingsTabActive && appMode === 'oneWay' && (Platform.OS !== 'web' || isDestinationInputFocused);
-    if (!shouldFetchDestinationSuggestions) {
-      setDestinationSuggestions([]);
-      setSearchingDestination(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-    const q = tripDestinationAddress.trim();
-    if (selectedDestinationAddress && selectedDestinationAddress.label.trim() === q) {
-      setDestinationSuggestions([]);
-      setSearchingDestination(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (suppressDestinationSuggestionFetchRef.current) {
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (q.length < 2) {
-      setDestinationSuggestions([]);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        setSearchingDestination(true);
-        const results = await fetchAddressSuggestions(q);
-        if (!cancelled) {
-          setDestinationSuggestions(results);
-        }
-      } catch {
-        if (!cancelled) {
-          setDestinationSuggestions([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setSearchingDestination(false);
-        }
-      }
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [isSettingsTabActive, appMode, tripDestinationAddress, isDestinationInputFocused, selectedDestinationAddress]);
-
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -642,18 +502,18 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
         setTripDestination(prefs.tripDestination);
         setTripStartAddress(prefs.tripStartAddress);
         setTripDestinationAddress(prefs.tripDestinationAddress);
-        setSavedSettingsSnapshot({
-          appMode: prefs.appMode,
-          useCurrentLocation: prefs.useCurrentLocation,
-          fuelNeeded: prefs.fuelNeeded.trim(),
-          fuelEconomy: prefs.fuelEconomy.trim(),
-          fuelType: fuelTypeNorm,
-          selectedBrands: brandsNorm,
-          tripStartAddress: prefs.tripStartAddress.trim(),
-          tripDestinationAddress: prefs.tripDestinationAddress.trim()
-        });
-        prevStartAddressForImeRef.current = prefs.tripStartAddress;
-        prevDestinationAddressForImeRef.current = prefs.tripDestinationAddress;
+        setSavedSettingsSnapshot(
+          createSettingsSnapshot({
+            appMode: prefs.appMode,
+            useCurrentLocation: prefs.useCurrentLocation,
+            fuelNeeded: prefs.fuelNeeded,
+            fuelEconomy: prefs.fuelEconomy,
+            fuelType: fuelTypeNorm,
+            selectedBrands: brandsNorm,
+            tripStartAddress: prefs.tripStartAddress,
+            tripDestinationAddress: prefs.tripDestinationAddress
+          })
+        );
         setSelectedStartAddress(
           prefs.tripStartAddress.trim().length > 0
             ? {
@@ -894,16 +754,19 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
         tripStart: nextTripStart
       });
       setTripDestination(nextTripDestination);
-      setSavedSettingsSnapshot({
-        appMode,
-        useCurrentLocation,
-        fuelNeeded: roundedFuelNeeded.trim(),
-        fuelEconomy: roundedFuelEconomy.trim(),
-        fuelType: nextFuelType,
-        selectedBrands: nextBrands,
-        tripStartAddress: startAddress,
-        tripDestinationAddress: destinationAddress
-      });
+      setSavedSettingsSnapshot(
+        createSettingsSnapshot({
+          appMode,
+          useCurrentLocation,
+          fuelNeeded: roundedFuelNeeded,
+          fuelEconomy: roundedFuelEconomy,
+          fuelType: nextFuelType,
+          selectedBrands: nextBrands,
+          tripStartAddress: startAddress,
+          tripDestinationAddress: destinationAddress
+        })
+      );
+      onSettingsSaved?.();
     } catch (err) {
       setErrorMsg(getErrorMessage(err, 'Address validation failed. Please try again.'));
       setLoading(false);
@@ -1030,34 +893,6 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const openExternalMapForStation = useCallback((station: RankedStation) => {
     void Linking.openURL(buildExternalMapUrl(station));
   }, []);
-
-  const renderMapExternalButton = useCallback(
-    (label: string) => (
-      <TouchableOpacity
-        style={styles.mapOpenExternalButton}
-        onPress={() => {
-          if (mapStation) {
-            openExternalMapForStation(mapStation);
-          }
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-      >
-        {canUseLiquidGlass ? (
-          <GlassView style={styles.mapOpenExternalButtonGlass} glassEffectStyle="regular">
-            <Text style={[styles.mapOpenExternalButtonText, styles.mapOpenExternalButtonTextGlass]}>
-              {label}
-            </Text>
-          </GlassView>
-        ) : (
-          <View style={styles.mapOpenExternalButtonFallback}>
-            <Text style={styles.mapOpenExternalButtonText}>{label}</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-    ),
-    [canUseLiquidGlass, mapStation, openExternalMapForStation, styles]
-  );
 
   const renderSettingsSection = useCallback(
     (children: React.ReactNode) => {
@@ -1372,114 +1207,49 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
     });
   }, [activeTab]);
 
-  const currentSettingsSnapshot = useMemo<SettingsSnapshot>(() => {
-    return {
-      appMode,
-      useCurrentLocation,
-      fuelNeeded: fuelNeeded.trim(),
-      fuelEconomy: fuelEconomy.trim(),
-      fuelType: normalizeFuelType(fuelType),
-      selectedBrands: normalizeBrands(selectedBrands),
-      tripStartAddress: tripStartAddress.trim(),
-      tripDestinationAddress: tripDestinationAddress.trim()
-    };
-  }, [appMode, useCurrentLocation, fuelNeeded, fuelEconomy, fuelType, selectedBrands, tripStartAddress, tripDestinationAddress]);
+  const currentSettingsSnapshot = useMemo<SettingsSnapshot>(
+    () =>
+      createSettingsSnapshot({
+        appMode,
+        useCurrentLocation,
+        fuelNeeded,
+        fuelEconomy,
+        fuelType,
+        selectedBrands,
+        tripStartAddress,
+        tripDestinationAddress
+      }),
+    [appMode, useCurrentLocation, fuelNeeded, fuelEconomy, fuelType, selectedBrands, tripStartAddress, tripDestinationAddress]
+  );
 
-  const hasPendingSettingsChanges = useMemo(() => {
-    if (!savedSettingsSnapshot) return false;
-    return !(
-      savedSettingsSnapshot.appMode === currentSettingsSnapshot.appMode &&
-      savedSettingsSnapshot.useCurrentLocation === currentSettingsSnapshot.useCurrentLocation &&
-      savedSettingsSnapshot.fuelNeeded === currentSettingsSnapshot.fuelNeeded &&
-      savedSettingsSnapshot.fuelEconomy === currentSettingsSnapshot.fuelEconomy &&
-      savedSettingsSnapshot.fuelType === currentSettingsSnapshot.fuelType &&
-      sameOrderedStringArray(savedSettingsSnapshot.selectedBrands, currentSettingsSnapshot.selectedBrands) &&
-      savedSettingsSnapshot.tripStartAddress === currentSettingsSnapshot.tripStartAddress &&
-      savedSettingsSnapshot.tripDestinationAddress === currentSettingsSnapshot.tripDestinationAddress
-    );
-  }, [savedSettingsSnapshot, currentSettingsSnapshot]);
+  const hasPendingSettingsChanges = useMemo(
+    () => hasSettingsSnapshotChanges(savedSettingsSnapshot, currentSettingsSnapshot),
+    [savedSettingsSnapshot, currentSettingsSnapshot]
+  );
 
   return (
     <>
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} backgroundColor="transparent" />
       <SafeAreaView style={styles.container} edges={['left', 'right']}>
 
-        <Modal
+        <MapStationModal
           visible={!!mapStation}
-          animationType="slide"
-          transparent={true}
-          presentationStyle="overFullScreen"
-          onRequestClose={() => setMapStation(null)}
-        >
-          <View style={styles.mapModalOverlay}>
-            <View style={styles.mapModalContent}>
-              <View style={styles.mapModalHeader}>
-                <View style={styles.mapModalTitleWrap}>
-                  <Text style={styles.mapModalTitle}>{mapStation?.name ?? 'Station'}</Text>
-                  <Text style={styles.mapModalSubtitle}>{mapStation?.address || 'Address unavailable'}</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => setMapStation(null)}
-                  style={styles.mapModalCloseButton}
-                  accessibilityRole="button"
-                  accessibilityLabel="Close map"
-                >
-                  <Ionicons name="close" size={20} color={palette.modalTitle} />
-                </TouchableOpacity>
-              </View>
-              {mapStation && Platform.OS === 'web' ? (
-                <View style={styles.mapWebWrap}>
-                  {React.createElement('iframe', {
-                    title: `map-${mapStation.code}`,
-                    src:
-                      appMode === 'oneWay' && oneWayStartPoint
-                        ? buildWebOneWayMapEmbedUrl(
-                            oneWayStartPoint,
-                            {
-                              latitude: mapStation.location.latitude,
-                              longitude: mapStation.location.longitude
-                            },
-                            tripDestination
-                          )
-                        : buildWebMapEmbedUrl(mapStation.location.latitude, mapStation.location.longitude, userLocation?.coords),
-                    style: {
-                      width: '100%',
-                      height: '100%',
-                      border: 0
-                    },
-                    loading: 'lazy'
-                  })}
-                  {renderMapExternalButton('Open in Google Maps')}
-                </View>
-              ) : mapStation && Platform.OS === 'ios' && AppleMapsView ? (
-                <View style={styles.mapWebWrap}>
-                  <AppleMapsView
-                    style={styles.mapView}
-                    cameraPosition={mapCameraPosition}
-                    markers={mapMarkers}
-                    polylines={mapPolylines}
-                  />
-                  {renderMapExternalButton('Open in Apple Maps')}
-                </View>
-              ) : mapStation && Platform.OS === 'android' && GoogleMapsView ? (
-                <View style={styles.mapWebWrap}>
-                  <GoogleMapsView
-                    style={styles.mapView}
-                    cameraPosition={mapCameraPosition}
-                    markers={mapMarkers}
-                    polylines={mapPolylines}
-                  />
-                  {renderMapExternalButton('Open in Google Maps')}
-                </View>
-              ) : (
-                <View style={styles.mapUnavailableBox}>
-                  <Ionicons name="map-outline" size={24} color={palette.metaHint} />
-                  <Text style={styles.mapUnavailableText}>Map preview is available on iOS and Android builds.</Text>
-                </View>
-              )}
-            </View>
-          </View>
-        </Modal>
+          mapStation={mapStation}
+          canUseLiquidGlass={canUseLiquidGlass}
+          palette={palette}
+          styles={styles}
+          appMode={appMode}
+          oneWayStartPoint={oneWayStartPoint}
+          tripDestination={tripDestination}
+          userLocation={userLocation}
+          AppleMapsView={AppleMapsView}
+          GoogleMapsView={GoogleMapsView}
+          mapCameraPosition={mapCameraPosition}
+          mapMarkers={mapMarkers}
+          mapPolylines={mapPolylines}
+          onClose={() => setMapStation(null)}
+          onOpenExternal={openExternalMapForStation}
+        />
 
         {activeTab === 'prices' ? (
           errorMsg ? (
@@ -1498,7 +1268,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                 contentContainerStyle={[
                   styles.resultsListContent,
                   rankedStations.length === 0 && styles.resultsListContentEmpty,
-                  { paddingBottom: bottomNavHeight + 8 }
+                  { paddingBottom: scrollBottomPadding }
                 ]}
               >
                 {rankedStations.length === 0 ? (
@@ -1520,7 +1290,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
             >
               <ScrollView
                 style={styles.settingsPageScroll}
-                contentContainerStyle={[styles.settingsPageContent, { paddingBottom: bottomNavHeight + 8 }]}
+                contentContainerStyle={[styles.settingsPageContent, { paddingBottom: scrollBottomPadding }]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="always"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -1559,7 +1329,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                   </View>
 
                   <Text style={styles.inputLabel}>Start Point Source</Text>
-                  <View style={styles.sourceToggleRow}>
+                  <View style={[styles.sourceToggleRow, { marginBottom: 0 }]}>
                     {[true, false].map((option) => {
                       const selected = useCurrentLocation === option;
                       return (
@@ -1586,81 +1356,31 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                     <Text style={styles.settingsSectionTitle}>Start Address</Text>
                   </View>
                   <Text style={styles.inputLabel}>Start Address</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={tripStartAddress}
-                    onChangeText={(value) => {
-                      const prev = prevStartAddressForImeRef.current;
-                      prevStartAddressForImeRef.current = value;
-                      const trimmed = value.trim();
-
-                      const exact = startSuggestions.find((s) => s.label.trim() === trimmed);
-                      if (exact) {
-                        applyStartFromSuggestion(exact, 'inline', value);
-                        return;
-                      }
-
-                      if (isLikelyImeAddressCommit(prev, value)) {
-                        suppressStartSuggestionFetchRef.current = true;
-                        setTripStartAddress(value);
-                        setSelectedStartAddress(null);
-                        setStartSuggestions([]);
-                        setSearchingStart(true);
-                        void (async () => {
-                          try {
-                            const resolved = await resolveAddress(trimmed);
-                            if (resolved) {
-                              setTripStartAddress(resolved.label);
-                              setSelectedStartAddress(resolved);
-                              prevStartAddressForImeRef.current = resolved.label;
-                            }
-                          } catch {
-                            // Leave text; user can pick from the list after the next fetch.
-                          } finally {
-                            setSearchingStart(false);
-                            suppressStartSuggestionFetchRef.current = false;
-                          }
-                        })();
-                        return;
-                      }
-
-                      setTripStartAddress(value);
-                      setSelectedStartAddress(null);
+                  <AddressSuggestionInput
+                    ui={{
+                      value: tripStartAddress,
+                      isFocused: isStartInputFocused,
+                      suggestions: startSuggestions,
+                      statusText: startStatusText,
+                      statusOk: startAddressSelected,
+                      metaHintText: searchingStart ? "Searching addresses..." : null
                     }}
+                    onChangeText={startAddressPicker.handleChangeText}
                     onFocus={() => setIsStartInputFocused(true)}
-                    onBlur={() => {
-                      setTimeout(() => {
-                        if (isSelectingSuggestionRef.current) {
-                          return;
-                        }
-                        setIsStartInputFocused(false);
-                      }, Platform.OS === 'web' ? 220 : 120);
-                    }}
+                    onBlur={startAddressPicker.handleBlur}
                     placeholder="Enter start address"
                     placeholderTextColor={palette.placeholder}
+                    inputStyle={styles.input}
+                    statusOkTextStyle={styles.addressStatusTextOk}
+                    styles={styles}
+                    keyPrefix="start"
+                    onPressInSuggestion={() => {
+                      isSelectingSuggestionRef.current = true;
+                    }}
+                    onSelectSuggestion={(suggestion) => {
+                      startAddressPicker.applySuggestion(suggestion, 'list');
+                    }}
                   />
-                  {searchingStart ? <Text style={styles.metaHint}>Searching addresses...</Text> : null}
-                  <View style={[styles.addressStatusPill, startAddressSelected && styles.addressStatusPillOk]}>
-                    <Text style={[styles.addressStatusText, startAddressSelected && styles.addressStatusTextOk]}>{startStatusText}</Text>
-                  </View>
-                  {startSuggestions.length > 0 && (Platform.OS !== 'web' || isStartInputFocused) ? (
-                    <View style={styles.suggestionsList}>
-                      {startSuggestions.map((suggestion) => (
-                        <TouchableOpacity
-                          key={`start-${suggestion.id}`}
-                          style={styles.suggestionItem}
-                          onPressIn={() => {
-                            isSelectingSuggestionRef.current = true;
-                          }}
-                          onPress={() => {
-                            applyStartFromSuggestion(suggestion, 'list');
-                          }}
-                        >
-                          <Text style={styles.suggestionText}>{suggestion.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ) : null}
                 </>
                 )
               ) : null}
@@ -1673,85 +1393,31 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                     <Text style={styles.settingsSectionTitle}>Destination</Text>
                   </View>
                   <Text style={styles.inputLabel}>Destination Address</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={tripDestinationAddress}
-                    onChangeText={(value) => {
-                      const prev = prevDestinationAddressForImeRef.current;
-                      prevDestinationAddressForImeRef.current = value;
-                      const trimmed = value.trim();
-
-                      const exact = destinationSuggestions.find((s) => s.label.trim() === trimmed);
-                      if (exact) {
-                        applyDestinationFromSuggestion(exact, 'inline', value);
-                        return;
-                      }
-
-                      if (isLikelyImeAddressCommit(prev, value)) {
-                        suppressDestinationSuggestionFetchRef.current = true;
-                        setTripDestinationAddress(value);
-                        setSelectedDestinationAddress(null);
-                        setDestinationSuggestions([]);
-                        setSearchingDestination(true);
-                        void (async () => {
-                          try {
-                            const resolved = await resolveAddress(trimmed);
-                            if (resolved) {
-                              setTripDestinationAddress(resolved.label);
-                              setSelectedDestinationAddress(resolved);
-                              prevDestinationAddressForImeRef.current = resolved.label;
-                            }
-                          } catch {
-                            // Leave text; user can pick from the list after the next fetch.
-                          } finally {
-                            setSearchingDestination(false);
-                            suppressDestinationSuggestionFetchRef.current = false;
-                          }
-                        })();
-                        return;
-                      }
-
-                      setTripDestinationAddress(value);
-                      setSelectedDestinationAddress(null);
+                  <AddressSuggestionInput
+                    ui={{
+                      value: tripDestinationAddress,
+                      isFocused: isDestinationInputFocused,
+                      suggestions: destinationSuggestions,
+                      statusText: destinationStatusText ?? "",
+                      statusOk: destinationAddressSelected,
+                      metaHintText: searchingDestination ? "Searching addresses..." : null
                     }}
+                    onChangeText={destinationAddressPicker.handleChangeText}
                     onFocus={() => setIsDestinationInputFocused(true)}
-                    onBlur={() => {
-                      setTimeout(() => {
-                        if (isSelectingSuggestionRef.current) {
-                          return;
-                        }
-                        setIsDestinationInputFocused(false);
-                      }, Platform.OS === 'web' ? 220 : 120);
-                    }}
+                    onBlur={destinationAddressPicker.handleBlur}
                     placeholder="Enter destination address"
                     placeholderTextColor={palette.placeholder}
+                    inputStyle={styles.input}
+                    statusOkTextStyle={styles.addressStatusTextOk}
+                    styles={styles}
+                    keyPrefix="dest"
+                    onPressInSuggestion={() => {
+                      isSelectingSuggestionRef.current = true;
+                    }}
+                    onSelectSuggestion={(suggestion) => {
+                      destinationAddressPicker.applySuggestion(suggestion, 'list');
+                    }}
                   />
-                  {searchingDestination ? <Text style={styles.metaHint}>Searching addresses...</Text> : null}
-                  {destinationStatusText ? (
-                    <View style={[styles.addressStatusPill, destinationAddressSelected && styles.addressStatusPillOk]}>
-                      <Text style={[styles.addressStatusText, destinationAddressSelected && styles.addressStatusTextOk]}>
-                        {destinationStatusText}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {destinationSuggestions.length > 0 && (Platform.OS !== 'web' || isDestinationInputFocused) ? (
-                    <View style={styles.suggestionsList}>
-                      {destinationSuggestions.map((suggestion) => (
-                        <TouchableOpacity
-                          key={`dest-${suggestion.id}`}
-                          style={styles.suggestionItem}
-                          onPressIn={() => {
-                            isSelectingSuggestionRef.current = true;
-                          }}
-                          onPress={() => {
-                            applyDestinationFromSuggestion(suggestion, 'list');
-                          }}
-                        >
-                          <Text style={styles.suggestionText}>{suggestion.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ) : null}
                 </>
                 )
               ) : null}
@@ -1765,35 +1431,25 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                 <View style={styles.inlineInputsRow}>
                   <View style={styles.inlineInputCol}>
                     <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Needed (Litres)</Text>
-                    <TextInput
-                      style={styles.inlineInput}
-                      keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'}
-                      value={fuelNeeded}
-                      onChangeText={setFuelNeeded}
-                      onBlur={() => setFuelNeeded((prev) => roundToTwoDecimalPlaces(prev))}
-                      returnKeyType="done"
-                      blurOnSubmit
-                      onSubmitEditing={() => Keyboard.dismiss()}
-                      keyboardAppearance={themeMode}
-                      placeholder="e.g. 50"
-                      placeholderTextColor={palette.placeholder}
-                    />
+                      <RoundedNumericInput
+                        value={fuelNeeded}
+                        onChangeText={setFuelNeeded}
+                        inputStyle={styles.inlineInput}
+                        keyboardAppearance={themeMode}
+                        placeholder="e.g. 50"
+                        placeholderTextColor={palette.placeholder}
+                      />
                   </View>
                   <View style={styles.inlineInputCol}>
                     <Text style={[styles.inputLabel, styles.inlineInputLabel]}>Fuel Economy (L/100km)</Text>
-                    <TextInput
-                      style={styles.inlineInput}
-                      keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'}
-                      value={fuelEconomy}
-                      onChangeText={setFuelEconomy}
-                      onBlur={() => setFuelEconomy((prev) => roundToTwoDecimalPlaces(prev))}
-                      returnKeyType="done"
-                      blurOnSubmit
-                      onSubmitEditing={() => Keyboard.dismiss()}
-                      keyboardAppearance={themeMode}
-                      placeholder="e.g. 8.0"
-                      placeholderTextColor={palette.placeholder}
-                    />
+                      <RoundedNumericInput
+                        value={fuelEconomy}
+                        onChangeText={setFuelEconomy}
+                        inputStyle={styles.inlineInput}
+                        keyboardAppearance={themeMode}
+                        placeholder="e.g. 8.0"
+                        placeholderTextColor={palette.placeholder}
+                      />
                   </View>
                 </View>
 
@@ -1814,7 +1470,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                 </View>
 
                 <Text style={styles.inputLabel}>Brands (Optional)</Text>
-                <View style={styles.fuelTypeRow}>
+                <View style={[styles.fuelTypeRow, { marginBottom: 0 }]}>
                   {BRAND_OPTIONS.map((option) => {
                     const selected = selectedBrands.includes(option);
                     return (
@@ -1884,51 +1540,16 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
               </>
             ) : (
               <>
-                <View style={styles.settingsHeaderRow}>
-                  <View style={styles.settingsHeaderTextWrap}>
-                    <Text style={styles.title}>Preferences</Text>
-                    <Text style={styles.subtitle}>Scroll to see all options.</Text>
-                  </View>
-                  {hasPendingSettingsChanges ? (
-                    <TouchableOpacity
-                      accessibilityRole="button"
-                      accessibilityLabel="Save settings"
-                      onPress={() => {
-                        void handleSaveSettings();
-                      }}
-                      disabled={isSavingSettings}
-                      style={styles.headerSaveButton}
-                    >
-                      {isSavingSettings ? (
-                        canUseLiquidGlass ? (
-                          <GlassView style={styles.headerSaveGlass} glassEffectStyle="clear">
-                            <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
-                          </GlassView>
-                        ) : (
-                          <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonDisabled]}>
-                            <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
-                          </View>
-                        )
-                      ) : canUseLiquidGlass ? (
-                        <GlassView style={styles.headerSaveGlass} glassEffectStyle="regular">
-                          <Text
-                            style={[
-                              styles.headerSaveButtonText,
-                              styles.headerSaveButtonTextEnabled,
-                              themeMode === 'light' ? { color: '#000000' } : null
-                            ]}
-                          >
-                            Save
-                          </Text>
-                        </GlassView>
-                      ) : (
-                        <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonEnabled]}>
-                          <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextEnabled]}>Save</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
+                <SettingsHeader
+                  hasPendingSettingsChanges={hasPendingSettingsChanges}
+                  isSavingSettings={isSavingSettings}
+                  canUseLiquidGlass={canUseLiquidGlass}
+                  themeMode={themeMode}
+                  styles={styles}
+                  onSave={() => {
+                    void handleSaveSettings();
+                  }}
+                />
               </>
             )}
           </View>

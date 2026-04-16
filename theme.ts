@@ -392,7 +392,8 @@ export function createThemedStyles(c: Palette) {
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.1,
       shadowRadius: 8,
-      elevation: 2
+      elevation: 2, 
+      marginBottom: 5
     },
     settingsSectionGlass: {
       borderWidth: 1,
@@ -403,7 +404,8 @@ export function createThemedStyles(c: Palette) {
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.1,
       shadowRadius: 8,
-      elevation: 2
+      elevation: 2,
+      bottom: 10
     },
     settingsSectionGlassBackground: {
       ...StyleSheet.absoluteFill
@@ -643,23 +645,37 @@ export function createThemedStyles(c: Palette) {
     mapModalOverlay: {
       flex: 1,
       backgroundColor: c.modalOverlay,
-      justifyContent: 'flex-end'
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 18
     },
     mapModalContent: {
       backgroundColor: c.modalBg,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
+      width: '100%',
+      maxWidth: 560,
+      height: '78%',
+      maxHeight: 680,
+      borderRadius: 24,
       borderWidth: 1,
       borderColor: c.modalBorder,
       overflow: 'hidden',
-      height: '78%'
+      shadowColor: c.cardShadow,
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.24,
+      shadowRadius: 18,
+      elevation: 10
+    },
+    mapModalGlassBackground: {
+      ...StyleSheet.absoluteFill,
+      borderRadius: 24
     },
     mapModalHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 13,
       borderBottomWidth: 1,
       borderBottomColor: c.modalBorder
     },
@@ -680,6 +696,17 @@ export function createThemedStyles(c: Palette) {
     mapModalCloseButton: {
       width: 34,
       height: 34,
+      borderRadius: 10,
+      overflow: 'hidden'
+    },
+    mapModalCloseButtonGlass: {
+      flex: 1,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center'
+    },
+    mapModalCloseButtonFallback: {
+      flex: 1,
       borderWidth: 1,
       borderColor: c.iconButtonBorder,
       borderRadius: 10,
@@ -691,7 +718,11 @@ export function createThemedStyles(c: Palette) {
       flex: 1
     },
     mapWebWrap: {
-      flex: 1
+      flex: 1,
+      margin: 12,
+      borderRadius: 16,
+      overflow: 'hidden',
+      backgroundColor: c.bg
     },
     mapOpenExternalButton: {
       position: 'absolute',

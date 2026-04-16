@@ -54,3 +54,50 @@ export type RankedStation = Station & {
   tripWithStopKm?: number;
   detourKm?: number;
 };
+
+export type ExpoMapMarker = {
+  id: string;
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  };
+  title?: string;
+  snippet?: string;
+};
+
+export type ExpoMapPolyline = {
+  id: string;
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  }[];
+  color?: string;
+  width?: number;
+};
+
+export type MapCameraPosition = {
+  coordinates: Coordinates;
+  zoom: number;
+};
+
+export type SettingsSnapshot = {
+  appMode: AppMode;
+  useCurrentLocation: boolean;
+  fuelNeeded: string;
+  fuelEconomy: string;
+  fuelType: string;
+  selectedBrands: string[];
+  tripStartAddress: string;
+  tripDestinationAddress: string;
+};
+
+export type SettingsSnapshotInput = {
+  appMode: AppMode;
+  useCurrentLocation: boolean;
+  fuelNeeded: string;
+  fuelEconomy: string;
+  fuelType: string;
+  selectedBrands: string[];
+  tripStartAddress: string;
+  tripDestinationAddress: string;
+};

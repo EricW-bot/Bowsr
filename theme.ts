@@ -141,10 +141,11 @@ export function createThemedStyles(c: Palette) {
     },
     headerPlainContent: {
       paddingHorizontal: 2,
-      paddingVertical: 2
+      paddingVertical: 2,
+      paddingTop: 10
     },
     title: {
-      fontSize: 28,
+      fontSize: 36,
       fontWeight: '800',
       color: c.title,
       letterSpacing: 0.2
@@ -344,8 +345,8 @@ export function createThemedStyles(c: Palette) {
     },
     headerSaveButton: {
       minWidth: 82,
-      height: 34,
-      borderRadius: 11,
+      height: 30,
+      borderRadius: 999,
       overflow: 'hidden'
     },
     headerSaveGlass: {
@@ -357,34 +358,29 @@ export function createThemedStyles(c: Palette) {
     },
     headerSaveButtonFallback: {
       flex: 1,
-      borderRadius: 11,
+      borderRadius: 999,
       borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: 12
+      paddingHorizontal: 10
     },
     headerSaveButtonEnabled: {
-      backgroundColor: c.primary,
-      borderColor: c.primary,
-      shadowColor: c.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.2,
-      shadowRadius: 8,
-      elevation: 2
+      backgroundColor: c.chipSelectedBg,
+      borderColor: c.chipSelectedBorder
     },
     headerSaveButtonDisabled: {
-      backgroundColor: c.iconButtonBg,
-      borderColor: c.primaryMuted
+      backgroundColor: c.chipBg,
+      borderColor: c.chipBorder
     },
     headerSaveButtonText: {
-      fontSize: 14,
-      fontWeight: '800'
+      fontSize: 12,
+      fontWeight: '600'
     },
     headerSaveButtonTextEnabled: {
-      color: c.title
+      color: c.chipTextSelected
     },
     headerSaveButtonTextDisabled: {
-      color: c.subtitle
+      color: c.chipText
     },
     settingsSection: {
       borderWidth: 1,
@@ -619,8 +615,13 @@ export function createThemedStyles(c: Palette) {
       paddingHorizontal: 8,
       gap: 6,
       borderWidth: 1,
-      borderColor: c.iconButtonBorder,
-      backgroundColor: c.headerOverlayBg
+      borderColor: c.cardBorder,
+      backgroundColor: c.cardBg,
+      shadowColor: c.cardShadow,
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.2,
+      shadowRadius: 14,
+      elevation: 8
     },
     bottomNavItem: {
       minWidth: 82,
@@ -696,24 +697,28 @@ export function createThemedStyles(c: Palette) {
       position: 'absolute',
       left: 12,
       top: 12,
+      minWidth: 146,
       borderRadius: 999,
       overflow: 'hidden'
     },
     mapOpenExternalButtonGlass: {
       borderRadius: 999,
       paddingVertical: 8,
-      paddingHorizontal: 12
+      paddingHorizontal: 12,
+      alignItems: 'center'
     },
     mapOpenExternalButtonFallback: {
       backgroundColor: c.primary,
       borderRadius: 999,
       paddingVertical: 8,
-      paddingHorizontal: 12
+      paddingHorizontal: 12,
+      alignItems: 'center'
     },
     mapOpenExternalButtonText: {
       color: '#fff',
       fontSize: 12,
-      fontWeight: '700'
+      fontWeight: '700',
+      textAlign: 'center'
     },
     mapOpenExternalButtonTextGlass: {
       color: c.primary

@@ -23,7 +23,6 @@ export default function RootLayout() {
             }
           : undefined
       }
-      disableTransparentOnScrollEdge
     >
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Icon sf={{ default: 'tag', selected: 'tag.fill' }} md="local_gas_station" />

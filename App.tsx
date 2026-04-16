@@ -164,7 +164,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const [roundTripRouteGeometry, setRoundTripRouteGeometry] = useState<Coordinates[] | null>(null);
   const isMountedRef = useRef(true);
   const isSelectingSuggestionRef = useRef(false);
-  const settingsSaveInFlightRef = useRef(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const prevStartAddressForImeRef = useRef('');
   const prevDestinationAddressForImeRef = useRef('');
   const suppressStartSuggestionFetchRef = useRef(false);
@@ -767,10 +767,10 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   }, []);
 
   const handleSaveSettings = async () => {
-    if (!hasPendingSettingsChanges || settingsSaveInFlightRef.current) {
+    if (!hasPendingSettingsChanges || isSavingSettings) {
       return;
     }
-    settingsSaveInFlightRef.current = true;
+    setIsSavingSettings(true);
 
     const roundedFuelNeeded = roundToTwoDecimalPlaces(fuelNeeded);
     const roundedFuelEconomy = roundToTwoDecimalPlaces(fuelEconomy);
@@ -791,7 +791,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
     if (missingMessage) {
       setErrorMsg(missingMessage);
       setLoading(false);
-      settingsSaveInFlightRef.current = false;
+      setIsSavingSettings(false);
       return;
     }
     setErrorMsg(null);
@@ -804,7 +804,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
         if (status !== 'granted') {
           setErrorMsg('Location permission is required when "Use my location" is enabled.');
           setLoading(false);
-          settingsSaveInFlightRef.current = false;
+          setIsSavingSettings(false);
           return;
         }
         resolvedUserLocation = await getCurrentLocationWithTimeout();
@@ -812,7 +812,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
       } catch (err) {
         setErrorMsg(getErrorMessage(err, 'Could not get current location. Try again or use start address.'));
         setLoading(false);
-        settingsSaveInFlightRef.current = false;
+        setIsSavingSettings(false);
         return;
       }
     }
@@ -858,7 +858,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
         if (!resolvedStart) {
           setErrorMsg('Please click a Start Address suggestion, then pick a valid result.');
           setLoading(false);
-          settingsSaveInFlightRef.current = false;
+          setIsSavingSettings(false);
           return;
         }
         setSelectedStartAddress(resolvedStart);
@@ -874,7 +874,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
         if (!resolvedDestination) {
           setErrorMsg('Please click a Destination Address suggestion, then pick a valid result.');
           setLoading(false);
-          settingsSaveInFlightRef.current = false;
+          setIsSavingSettings(false);
           return;
         }
         setSelectedDestinationAddress(resolvedDestination);
@@ -907,7 +907,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
     } catch (err) {
       setErrorMsg(getErrorMessage(err, 'Address validation failed. Please try again.'));
       setLoading(false);
-      settingsSaveInFlightRef.current = false;
+      setIsSavingSettings(false);
       return;
     }
     setIsStartInputFocused(false);
@@ -934,7 +934,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
         nextBrands
       );
     }
-    settingsSaveInFlightRef.current = false;
+    setIsSavingSettings(false);
   };
   const renderItem = ({ item, index }: { item: RankedStation; index: number }) => {
     const cardContent = (
@@ -1896,10 +1896,10 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                       onPress={() => {
                         void handleSaveSettings();
                       }}
-                      disabled={loading}
+                      disabled={isSavingSettings}
                       style={styles.headerSaveButton}
                     >
-                      {loading ? (
+                      {isSavingSettings ? (
                         canUseLiquidGlass ? (
                           <GlassView style={styles.headerSaveGlass} glassEffectStyle="clear">
                             <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
@@ -1911,7 +1911,15 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                         )
                       ) : canUseLiquidGlass ? (
                         <GlassView style={styles.headerSaveGlass} glassEffectStyle="regular">
-                          <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextEnabled]}>Save</Text>
+                          <Text
+                            style={[
+                              styles.headerSaveButtonText,
+                              styles.headerSaveButtonTextEnabled,
+                              themeMode === 'light' ? { color: '#000000' } : null
+                            ]}
+                          >
+                            Save
+                          </Text>
                         </GlassView>
                       ) : (
                         <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonEnabled]}>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, TouchableOpacity, View, useColorScheme, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { GlassView } from 'expo-glass-effect';
+import { ThemedGlassView } from './ThemedGlassView';
 import type { AppTab, TabDefinition } from '../Interface';
 
 type FloatingBottomNavStyles = {
@@ -17,7 +17,6 @@ type FloatingBottomNavProps = {
   tabs: TabDefinition[];
   activeTab: AppTab;
   onTabPress: (tab: AppTab) => void;
-  canUseLiquidGlass: boolean;
   bottomInset: number;
   selectedColor: string;
   unselectedColor: string;
@@ -28,7 +27,6 @@ export function FloatingBottomNav({
   tabs,
   activeTab,
   onTabPress,
-  canUseLiquidGlass,
   bottomInset,
   selectedColor,
   unselectedColor,
@@ -55,13 +53,9 @@ export function FloatingBottomNav({
 
   return (
     <View style={[styles.bottomNavOuter, { paddingBottom: bottomInset }]}>
-      {canUseLiquidGlass ? (
-        <GlassView style={styles.bottomNavGlass} glassEffectStyle="regular">
-          {buttons}
-        </GlassView>
-      ) : (
-        <View style={styles.bottomNavFallback}>{buttons}</View>
-      )}
+      <ThemedGlassView style={styles.bottomNavGlass} glassEffectStyle="regular" fallbackStyle={styles.bottomNavFallback}>
+        {buttons}
+      </ThemedGlassView>
     </View>
   );
 }

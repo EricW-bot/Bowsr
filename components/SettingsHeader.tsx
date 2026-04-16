@@ -1,12 +1,11 @@
 import React from 'react';
-import { Text, TouchableOpacity, View, type TextStyle } from 'react-native';
-import { GlassView } from 'expo-glass-effect';
+import { Text, TouchableOpacity, View } from 'react-native';
+import { ThemedGlassView } from './ThemedGlassView';
 import type { createThemedStyles } from '../theme';
 
 type SettingsHeaderProps = {
   hasPendingSettingsChanges: boolean;
   isSavingSettings: boolean;
-  canUseLiquidGlass: boolean;
   themeMode: 'light' | 'dark';
   styles: ReturnType<typeof createThemedStyles>;
   onSave: () => void;
@@ -15,7 +14,6 @@ type SettingsHeaderProps = {
 export function SettingsHeader({
   hasPendingSettingsChanges,
   isSavingSettings,
-  canUseLiquidGlass,
   themeMode,
   styles,
   onSave
@@ -44,33 +42,28 @@ export function SettingsHeader({
         disabled={isSavingSettings}
         style={styles.headerSaveButton}
       >
-        {isSavingSettings ? (
-          canUseLiquidGlass ? (
-            <GlassView style={styles.headerSaveGlass} glassEffectStyle="clear">
-              <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
-            </GlassView>
+        <ThemedGlassView
+          style={styles.headerSaveGlass}
+          glassEffectStyle={isSavingSettings ? 'clear' : 'regular'}
+          fallbackStyle={[
+            styles.headerSaveButtonFallback,
+            isSavingSettings ? styles.headerSaveButtonDisabled : styles.headerSaveButtonEnabled
+          ]}
+        >
+          {isSavingSettings ? (
+            <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
           ) : (
-            <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonDisabled]}>
-              <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextDisabled]}>Save</Text>
-            </View>
-          )
-        ) : canUseLiquidGlass ? (
-          <GlassView style={styles.headerSaveGlass} glassEffectStyle="regular">
             <Text
               style={[
                 styles.headerSaveButtonText,
                 styles.headerSaveButtonTextEnabled,
-                themeMode === 'light' ? ({ color: '#000000' } as TextStyle) : null
+                themeMode === 'light' ? ({ color: '#000000' } as any) : null
               ]}
             >
               Save
             </Text>
-          </GlassView>
-        ) : (
-          <View style={[styles.headerSaveButtonFallback, styles.headerSaveButtonEnabled]}>
-            <Text style={[styles.headerSaveButtonText, styles.headerSaveButtonTextEnabled]}>Save</Text>
-          </View>
-        )}
+          )}
+        </ThemedGlassView>
       </TouchableOpacity>
     </View>
   );

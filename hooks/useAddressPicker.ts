@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Keyboard, Platform } from 'react-native';
 import type { AddressSuggestion } from '../clients/geocodingClient';
 
@@ -71,8 +71,13 @@ export function useAddressPicker({
   resolveAddress,
   resolveAddressByPlaceId
 }: UseAddressPickerArgs) {
-  const suppressSuggestionFetchRef = React.useRef(false);
-  const prevAddressForImeRef = React.useRef(arguments[0].value || '');
+
+  const suppressSuggestionFetchRef = useRef(false);
+  const prevAddressForImeRef = useRef(arguments[0].value || '');
+
+  useEffect(() => {
+    prevAddressForImeRef.current = value;
+  }, [value]);
 
 
   React.useEffect(() => {

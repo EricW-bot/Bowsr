@@ -4,6 +4,7 @@ import {
   View,
   ScrollView,
   ActivityIndicator,
+  RefreshControl,
   TouchableOpacity,
   KeyboardAvoidingView,
   Linking,
@@ -14,7 +15,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
+import { ThemedGlassView, canUseLiquidGlass } from './components/ThemedGlassView';
+import { GlassView } from 'expo-glass-effect';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import * as SystemUI from 'expo-system-ui';
@@ -64,6 +66,7 @@ import { SettingsTab } from './tabs/SettingsTab';
 
 import { roundToTwoDecimalPlaces } from './helpers/numberFormatting';
 import { useAddressPicker } from './hooks/useAddressPicker';
+import { useLocation } from './hooks/useLocation';
 
 type AppProps = {
   initialTab?: AppTab;
@@ -130,7 +133,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const [rankedStations, setRankedStations] = useState<RankedStation[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+  const { userLocation, setUserLocation, fetchLocation } = useLocation();
   const [fuelNeeded, setFuelNeeded] = useState('25');
   const [fuelEconomy, setFuelEconomy] = useState('10.0');
   const [fuelType, setFuelType] = useState(DEFAULT_FUEL_TYPE);
@@ -152,6 +155,57 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const [oneWayRouteGeometry, setOneWayRouteGeometry] = useState<Coordinates[] | null>(null);
   const [roundTripRouteGeometry, setRoundTripRouteGeometry] = useState<Coordinates[] | null>(null);
   const isMountedRef = useRef(true);
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleListRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      let nextUserLocation = userLocation;
+      if (useCurrentLocation) {
+        const res = await fetchLocation(false);
+        if (res.location) {
+          nextUserLocation = res.location;
+        }
+      }
+
+      let nextTripStart = {
+        latitude: nextUserLocation?.coords.latitude ?? 0,
+        longitude: nextUserLocation?.coords.longitude ?? 0
+      };
+
+      if (!useCurrentLocation) {
+         if (!selectedStartAddress?.coordinates) return;
+         nextTripStart = selectedStartAddress.coordinates;
+      }
+
+      if (appMode === 'oneWay') {
+        if (!selectedDestinationAddress?.coordinates) return;
+        await fetchAndRankTripDataRef.current(
+          nextTripStart,
+          selectedDestinationAddress.coordinates,
+          fuelNeeded,
+          fuelEconomy,
+          appliedFuelType,
+          selectedBrands
+        );
+      } else {
+        await fetchAndRankFuelDataRef.current(
+          nextTripStart.latitude,
+          nextTripStart.longitude,
+          fuelNeeded,
+          fuelEconomy,
+          appliedFuelType,
+          selectedBrands
+        );
+      }
+    } catch {
+      // Ignore errors on refresh
+    } finally {
+      setRefreshing(false);
+    }
+  }, [userLocation, useCurrentLocation, appMode, selectedStartAddress, selectedDestinationAddress, fuelNeeded, fuelEconomy, appliedFuelType, selectedBrands]);
+
   const isSelectingSuggestionRef = useRef(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const latestRankingRequestIdRef = useRef(0);
@@ -224,7 +278,6 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const statusBarInset = Constants.statusBarHeight ?? 0;
   const headerTopOffset = statusBarInset;
   const topHeaderHeight = headerTopOffset + (headerContentHeights[activeTab] ?? 84) + 20;
-  const canUseLiquidGlass = Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
   useEffect(() => {
     void SystemUI.setBackgroundColorAsync(palette.bg);
@@ -533,35 +586,14 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
             : null
         );
 
-        let location: Location.LocationObject | null = null;
-        if (prefs.useCurrentLocation) {
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          if (cancelled) return;
-          if (status !== 'granted') {
-            setErrorMsg('Permission to access location was denied');
-            setLoading(false);
-            return;
-          }
-
-          // Avoid an infinite spinner if GPS/permissions are slow or unavailable in TestFlight.
-          location = await getCurrentLocationWithTimeout();
-          if (cancelled) return;
-          setUserLocation(location);
-        } else {
-          // Address mode should still try to show current-location pin on maps when permission
-          // was already granted, but this must never block initialization.
-          try {
-            const permissions = await Location.getForegroundPermissionsAsync();
-            if (!cancelled && permissions.status === 'granted') {
-              location = await getCurrentLocationWithTimeout();
-              if (!cancelled) {
-                setUserLocation(location);
-              }
-            }
-          } catch {
-            // Ignore best-effort location failures in address mode.
-          }
+        const { success, errorMsg, location: newLoc } = await fetchLocation(prefs.useCurrentLocation);
+        if (cancelled) return;
+        if (!success) {
+          setErrorMsg(errorMsg || 'Failed to get location');
+          setLoading(false);
+          return;
         }
+        let location = newLoc;
 
         if (prefs.appMode === 'oneWay') {
           const missingMessage = getTripAddressMissingMessage(
@@ -659,22 +691,14 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
 
     let resolvedUserLocation = userLocation;
     if (useCurrentLocation && !resolvedUserLocation) {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          setErrorMsg('Location permission is required when "Use my location" is enabled.');
-          setLoading(false);
-          setIsSavingSettings(false);
-          return;
-        }
-        resolvedUserLocation = await getCurrentLocationWithTimeout();
-        setUserLocation(resolvedUserLocation);
-      } catch (err) {
-        setErrorMsg(getErrorMessage(err, 'Could not get current location. Try again or use start address.'));
+      const res = await fetchLocation(true);
+      if (!res.success) {
+        setErrorMsg('Location permission is required when "Use my location" is enabled.');
         setLoading(false);
         setIsSavingSettings(false);
         return;
       }
+      resolvedUserLocation = res.location;
     }
 
     let nextTripStart = {
@@ -896,17 +920,16 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
 
   const renderSettingsSection = useCallback(
     (children: React.ReactNode) => {
-      if (canUseLiquidGlass) {
-        return (
+      return canUseLiquidGlass ? (
           <View style={styles.settingsSectionGlass}>
             <GlassView style={styles.settingsSectionGlassBackground} glassEffectStyle="regular" />
             <View style={styles.settingsSectionContent}>{children}</View>
           </View>
+        ) : (
+          <View style={styles.settingsSection}>{children}</View>
         );
-      }
-      return <View style={styles.settingsSection}>{children}</View>;
     },
-    [canUseLiquidGlass, styles]
+    [styles]
   );
 
   const stationMarker = useMemo<ExpoMapMarker | null>(() => {
@@ -1235,7 +1258,6 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
         <MapStationModal
           visible={!!mapStation}
           mapStation={mapStation}
-          canUseLiquidGlass={canUseLiquidGlass}
           palette={palette}
           styles={styles}
           appMode={appMode}
@@ -1264,6 +1286,14 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
           ) : (
             <PricesTab style={[styles.listContainer, { paddingTop: topHeaderHeight, paddingBottom: 0 }]}>
               <ScrollView
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={handleListRefresh}
+                    tintColor={palette.primaryMuted}
+                    colors={[palette.primary]}
+                  />
+                }
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[
                   styles.resultsListContent,
@@ -1282,7 +1312,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
             </PricesTab>
           )
         ) : (
-          <SettingsTab style={[styles.settingsPageWrap, { paddingTop: topHeaderHeight }]}>
+          <SettingsTab style={[styles.settingsPageWrap]}>
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
@@ -1290,7 +1320,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
             >
               <ScrollView
                 style={styles.settingsPageScroll}
-                contentContainerStyle={[styles.settingsPageContent, { paddingBottom: scrollBottomPadding }]}
+                contentContainerStyle={[styles.settingsPageContent, { paddingTop: topHeaderHeight, paddingBottom: scrollBottomPadding }]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="always"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -1503,17 +1533,17 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                     <>
                       <TouchableOpacity onPress={() => navigateToTab('settings')} accessibilityRole="button" accessibilityLabel="Open settings">
                         <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
-                          <Text style={styles.summaryChipText}>{fuelNeeded}L</Text>
+                          <Text style={[styles.summaryChipText]}>{fuelNeeded}L</Text>
                         </GlassView>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => navigateToTab('settings')} accessibilityRole="button" accessibilityLabel="Open settings">
                         <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
-                          <Text style={styles.summaryChipText}>{appliedFuelType}</Text>
+                          <Text style={[styles.summaryChipText]}>{appliedFuelType}</Text>
                         </GlassView>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => navigateToTab('settings')} accessibilityRole="button" accessibilityLabel="Open settings">
                         <GlassView style={styles.summaryChipGlass} glassEffectStyle="regular">
-                          <Text style={styles.summaryChipText}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
+                          <Text style={[styles.summaryChipText]}>{appMode === 'oneWay' ? 'One-way' : 'Round-trip'}</Text>
                         </GlassView>
                       </TouchableOpacity>
                     </>
@@ -1543,7 +1573,6 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
                 <SettingsHeader
                   hasPendingSettingsChanges={hasPendingSettingsChanges}
                   isSavingSettings={isSavingSettings}
-                  canUseLiquidGlass={canUseLiquidGlass}
                   themeMode={themeMode}
                   styles={styles}
                   onSave={() => {
@@ -1560,7 +1589,6 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
             tabs={bottomNavTabs}
             activeTab={activeTab}
             onTabPress={navigateToTab}
-            canUseLiquidGlass={canUseLiquidGlass}
             bottomInset={bottomNavInset}
             selectedColor={palette.primary}
             unselectedColor={palette.metaHint}

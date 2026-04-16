@@ -1,6 +1,6 @@
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { GlassView } from 'expo-glass-effect';
+import { ThemedGlassView, canUseLiquidGlass } from './ThemedGlassView';
 import { Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
 import type {
   AppMode,
@@ -17,7 +17,6 @@ import type { createThemedStyles, getPalette } from '../theme';
 type MapStationModalProps = {
   visible: boolean;
   mapStation: RankedStation | null;
-  canUseLiquidGlass: boolean;
   palette: ReturnType<typeof getPalette>;
   styles: ReturnType<typeof createThemedStyles>;
   appMode: AppMode;
@@ -36,7 +35,6 @@ type MapStationModalProps = {
 export function MapStationModal({
   visible,
   mapStation,
-  canUseLiquidGlass,
   palette,
   styles,
   appMode,
@@ -63,15 +61,13 @@ export function MapStationModal({
         accessibilityRole="button"
         accessibilityLabel={label}
       >
-        {canUseLiquidGlass ? (
-          <GlassView style={styles.mapOpenExternalButtonGlass} glassEffectStyle="regular">
+        <ThemedGlassView style={styles.mapOpenExternalButtonGlass} glassEffectStyle="regular" fallbackStyle={styles.mapOpenExternalButtonFallback}>
+          {canUseLiquidGlass ? (
             <Text style={[styles.mapOpenExternalButtonText, styles.mapOpenExternalButtonTextGlass]}>{label}</Text>
-          </GlassView>
-        ) : (
-          <View style={styles.mapOpenExternalButtonFallback}>
+          ) : (
             <Text style={styles.mapOpenExternalButtonText}>{label}</Text>
-          </View>
-        )}
+          )}
+        </ThemedGlassView>
       </TouchableOpacity>
     );
   };
@@ -80,7 +76,7 @@ export function MapStationModal({
     <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
       <View style={styles.mapModalOverlay}>
         <View style={styles.mapModalContent}>
-          {canUseLiquidGlass ? <GlassView style={styles.mapModalGlassBackground} glassEffectStyle="regular" /> : null}
+          <ThemedGlassView style={styles.mapModalGlassBackground} glassEffectStyle="regular" />
           <View style={styles.mapModalHeader}>
             <View style={styles.mapModalTitleWrap}>
               <Text style={styles.mapModalTitle}>{mapStation?.name ?? 'Station'}</Text>
@@ -92,15 +88,9 @@ export function MapStationModal({
               accessibilityRole="button"
               accessibilityLabel="Close map"
             >
-              {canUseLiquidGlass ? (
-                <GlassView style={styles.mapModalCloseButtonGlass} glassEffectStyle="regular">
-                  <Ionicons name="close" size={20} color={palette.modalTitle} />
-                </GlassView>
-              ) : (
-                <View style={styles.mapModalCloseButtonFallback}>
-                  <Ionicons name="close" size={20} color={palette.modalTitle} />
-                </View>
-              )}
+              <ThemedGlassView style={styles.mapModalCloseButtonGlass} glassEffectStyle="regular" fallbackStyle={styles.mapModalCloseButtonFallback}>
+                <Ionicons name="close" size={20} color={palette.modalTitle} />
+              </ThemedGlassView>
             </TouchableOpacity>
           </View>
 

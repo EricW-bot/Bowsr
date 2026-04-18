@@ -1530,7 +1530,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
         <View pointerEvents="none" style={[styles.headerVignette, { height: topHeaderHeight + 15 }]}>
           <LinearGradient
             colors={[bgRgbaSolid, bgRgbaSolid, bgRgbaTransparent]}
-            locations={[0, topHeaderHeight / (topHeaderHeight + 15), 1]}
+            locations={[0, Number((topHeaderHeight / (topHeaderHeight + 15)).toFixed(3)), 1]}
             style={{ flex: 1 }}
           />
         </View>

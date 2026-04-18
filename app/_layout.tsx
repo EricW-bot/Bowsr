@@ -1,28 +1,15 @@
 import React from 'react';
-import { DynamicColorIOS, Platform } from 'react-native';
+import { useColorScheme } from 'react-native';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
 export default function RootLayout() {
+  const colorScheme = useColorScheme();
+  const tintColor = colorScheme === 'dark' ? 'white' : 'black';
+
   return (
     <NativeTabs
-      tintColor={
-        Platform.OS === 'ios'
-          ? DynamicColorIOS({
-              dark: 'white',
-              light: 'black'
-            })
-          : undefined
-      }
-      labelStyle={
-        Platform.OS === 'ios'
-          ? {
-              color: DynamicColorIOS({
-                dark: 'white',
-                light: 'black'
-              })
-            }
-          : undefined
-      }
+      tintColor={tintColor}
+      labelStyle={{ color: tintColor }}
     >
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Icon sf={{ default: 'tag', selected: 'tag.fill' }} md="local_gas_station" />

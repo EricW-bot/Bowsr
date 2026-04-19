@@ -285,10 +285,6 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
   const bgRgbaTransparent = themeMode === 'light' ? 'rgba(238, 242, 247, 0)' : 'rgba(15, 20, 25, 0)';
 
   useEffect(() => {
-    void SystemUI.setBackgroundColorAsync(palette.bg);
-  }, [palette.bg]);
-
-  useEffect(() => {
     if (__DEV__) {
       runTripAlgorithmValidation();
     }

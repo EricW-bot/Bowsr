@@ -18,6 +18,7 @@ module.exports = () => {
   return {
     name: 'OnlyFuel',
     slug: 'FuelNearMe',
+    scheme: 'fuelnearme',
     version: '2.1.1',
     orientation: 'portrait',
     icon: './assets/logo.png',
@@ -69,7 +70,6 @@ module.exports = () => {
         'expo-location',
         {
           locationAlwaysAndWhenInUsePermission: iosLocationPurpose,
-          locationAlwaysPermission: iosLocationPurpose,
           locationWhenInUsePermission: iosLocationPurpose
         }
       ],

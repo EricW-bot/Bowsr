@@ -4,6 +4,16 @@ import { AVG_CITY_SPEED_KMH, OPENROUTESERVICE_API_KEY } from './constants';
 import { fetchWithTimeout } from './clients/network';
 
 let estimatedRoutingUsedInSession = false;
+const ROUTE_CACHE_TTL_MS = 10 * 60 * 1000;
+const ROUTE_CACHE_MAX_ENTRIES = 300;
+
+type RouteCacheEntry = {
+  value: RouteMetrics;
+  expiresAtMs: number;
+};
+
+const directRouteCache = new Map<string, RouteCacheEntry>();
+const viaRouteCache = new Map<string, RouteCacheEntry>();
 
 export function beginRoutingSession(): void {
   estimatedRoutingUsedInSession = false;
@@ -11,6 +21,54 @@ export function beginRoutingSession(): void {
 
 export function getRoutingSessionSource(): 'live' | 'estimated' {
   return estimatedRoutingUsedInSession ? 'estimated' : 'live';
+}
+
+function roundCoordinate(value: number): number {
+  return Number(value.toFixed(5));
+}
+
+function coordinateKey(point: Coordinates): string {
+  return `${roundCoordinate(point.latitude)},${roundCoordinate(point.longitude)}`;
+}
+
+function buildDirectRouteCacheKey(start: Coordinates, end: Coordinates): string {
+  return `${coordinateKey(start)}->${coordinateKey(end)}`;
+}
+
+function buildViaRouteCacheKey(start: Coordinates, via: Coordinates, end: Coordinates): string {
+  return `${coordinateKey(start)}->${coordinateKey(via)}->${coordinateKey(end)}`;
+}
+
+function pruneOldestEntries(cache: Map<string, RouteCacheEntry>, maxEntries: number): void {
+  while (cache.size > maxEntries) {
+    const oldestKey = cache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    cache.delete(oldestKey);
+  }
+}
+
+function readRouteCache(cache: Map<string, RouteCacheEntry>, key: string): RouteMetrics | null {
+  const cached = cache.get(key);
+  if (!cached) {
+    return null;
+  }
+  if (Date.now() >= cached.expiresAtMs) {
+    cache.delete(key);
+    return null;
+  }
+  cache.delete(key);
+  cache.set(key, cached);
+  return cached.value;
+}
+
+function writeRouteCache(cache: Map<string, RouteCacheEntry>, key: string, value: RouteMetrics): void {
+  cache.set(key, {
+    value,
+    expiresAtMs: Date.now() + ROUTE_CACHE_TTL_MS
+  });
+  pruneOldestEntries(cache, ROUTE_CACHE_MAX_ENTRIES);
 }
 
 function toRadians(value: number): number {
@@ -169,14 +227,22 @@ async function fetchOpenRouteServiceRoute(start: Coordinates, end: Coordinates):
 }
 
 export async function fetchRouteDistanceDuration(start: Coordinates, end: Coordinates): Promise<RouteMetrics> {
+  const cacheKey = buildDirectRouteCacheKey(start, end);
+  const cached = readRouteCache(directRouteCache, cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const osrmRoute = await fetchOsrmRoute(start, end);
   if (osrmRoute) {
+    writeRouteCache(directRouteCache, cacheKey, osrmRoute);
     return osrmRoute;
   }
 
   if (Platform.OS !== 'web') {
     const orsRoute = await fetchOpenRouteServiceRoute(start, end);
     if (orsRoute) {
+      writeRouteCache(directRouteCache, cacheKey, orsRoute);
       return orsRoute;
     }
   } else {
@@ -185,7 +251,9 @@ export async function fetchRouteDistanceDuration(start: Coordinates, end: Coordi
 
   console.warn('Live routing provider unavailable, using estimated route.');
   estimatedRoutingUsedInSession = true;
-  return estimateRouteDistanceDuration(start, end);
+  const estimated = estimateRouteDistanceDuration(start, end);
+  writeRouteCache(directRouteCache, cacheKey, estimated);
+  return estimated;
 }
 
 export async function fetchRouteVia(
@@ -193,13 +261,21 @@ export async function fetchRouteVia(
   via: Coordinates,
   end: Coordinates
 ) : Promise<RouteMetrics> {
+  const cacheKey = buildViaRouteCacheKey(start, via, end);
+  const cached = readRouteCache(viaRouteCache, cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const firstLeg = await fetchRouteDistanceDuration(start, via);
   const secondLeg = await fetchRouteDistanceDuration(via, end);
 
-  return {
+  const combined = {
     distanceKm: firstLeg.distanceKm + secondLeg.distanceKm,
     durationMin: firstLeg.durationMin + secondLeg.durationMin
   };
+  writeRouteCache(viaRouteCache, cacheKey, combined);
+  return combined;
 }
 
 export async function fetchDrivingRoute(

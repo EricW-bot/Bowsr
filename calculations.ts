@@ -352,7 +352,13 @@ export async function computeTripRankedStations(params: TripRankingParams): Prom
     corridorCandidates = buildTripCandidates(Number.POSITIVE_INFINITY);
   }
 
-  const scored = await runWithConcurrency(corridorCandidates, ROUTING_CONCURRENCY, async (candidate) => {
+  const routeEvaluationLimit = Math.max(
+    MAX_DISPLAY_RESULTS,
+    Math.min(corridorCandidates.length, Math.max(MAX_DISPLAY_RESULTS + 3, Math.floor(maxCandidates * 0.8)))
+  );
+  const routeCandidates = corridorCandidates.slice(0, routeEvaluationLimit);
+
+  const scored = await runWithConcurrency(routeCandidates, ROUTING_CONCURRENCY, async (candidate) => {
     const stationPoint = {
       latitude: candidate.station.location.latitude,
       longitude: candidate.station.location.longitude

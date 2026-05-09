@@ -1034,6 +1034,9 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
     };
   }, [oneWayStartPoint, useCurrentLocation, tripStartAddress]);
 
+  const isNativeMapPreviewAvailable =
+    (Platform.OS === 'ios' && !!AppleMapsView) || (Platform.OS === 'android' && !!GoogleMapsView);
+
   useEffect(() => {
     let cancelled = false;
     const stationPoint = mapStation
@@ -1043,7 +1046,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
       }
       : null;
 
-    if (Platform.OS === 'web' || appMode !== 'oneWay' || !oneWayStartPoint || !stationPoint) {
+    if (appMode !== 'oneWay' || !oneWayStartPoint || !stationPoint || !isNativeMapPreviewAvailable) {
       setOneWayRouteGeometry(null);
       return () => {
         cancelled = true;
@@ -1060,7 +1063,7 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
     return () => {
       cancelled = true;
     };
-  }, [appMode, mapStation, oneWayStartPoint, tripDestination]);
+  }, [appMode, isNativeMapPreviewAvailable, mapStation, oneWayStartPoint, tripDestination]);
 
   useEffect(() => {
     let cancelled = false;

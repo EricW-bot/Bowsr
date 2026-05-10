@@ -4,12 +4,12 @@ export const getErrorMessage = (err: unknown, fallback: string): string => {
   return err instanceof Error ? err.message : fallback;
 };
 
-export const normalizeFuelType = (value: string): string => {
-  const normalized = value.trim().toUpperCase();
-  return normalized || DEFAULT_FUEL_TYPE;
+export const normaliseFuelType = (value: string): string => {
+  const normalise = value.trim().toUpperCase();
+  return normalise || DEFAULT_FUEL_TYPE;
 };
 
-export const normalizeBrands = (brands: string[]): string[] => {
+export const normaliseBrands = (brands: string[]): string[] => {
   return brands.map((brand) => brand.trim()).filter((brand) => brand.length > 0);
 };
 

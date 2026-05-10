@@ -1,6 +1,6 @@
 import { API_KEY, BASIC_AUTH_HEADER } from '../constants';
 import type { FuelApiData, Price, Station } from '../Interface';
-import { normalizeBrands } from '../helpers/utils';
+import { normaliseBrands } from '../helpers/utils';
 import { fetchWithTimeout } from './network';
 
 const sleep = async (ms: number): Promise<void> => {
@@ -145,7 +145,7 @@ export const fetchNearbyFuelData = async (
   const MAX_RETRIES = 3;
   const BASE_BACKOFF_MS = 800;
 
-  const normalizedBrandArray = Array.from(new Set(normalizeBrands(brand)));
+  const normalisedBrandArray = Array.from(new Set(normaliseBrands(brand)));
   const requestBody: Record<string, unknown> = {
     fueltype,
     latitude: latitude.toString(),
@@ -155,8 +155,8 @@ export const fetchNearbyFuelData = async (
     sortascending: 'true'
   };
 
-  if (normalizedBrandArray.length > 0) {
-    requestBody.brand = normalizedBrandArray;
+  if (normalisedBrandArray.length > 0) {
+    requestBody.brand = normalisedBrandArray;
   }
 
   let lastError: unknown = null;

@@ -48,7 +48,7 @@ import type {
 import { loadUserPreferences, saveUserPreferences } from './preferencesStorage';
 import { createThemedStyles, getPalette } from './theme';
 import { runTripAlgorithmValidation } from './tripValidation';
-import { getErrorMessage, normalizeBrands, normalizeFuelType, sameOrderedStringArray } from './helpers/utils';
+import { getErrorMessage, normaliseBrands, normaliseFuelType, sameOrderedStringArray } from './helpers/utils';
 import {
   buildExternalMapUrl,
   getRoundTripStartMissingMessage,
@@ -82,8 +82,8 @@ function createSettingsSnapshot(input: SettingsSnapshotInput): SettingsSnapshot 
     useCurrentLocation: input.useCurrentLocation,
     fuelNeeded: input.fuelNeeded.trim(),
     fuelEconomy: input.fuelEconomy.trim(),
-    fuelType: normalizeFuelType(input.fuelType),
-    selectedBrands: normalizeBrands(input.selectedBrands),
+    fuelType: normaliseFuelType(input.fuelType),
+    selectedBrands: normaliseBrands(input.selectedBrands),
     tripStartAddress: input.tripStartAddress.trim(),
     tripDestinationAddress: input.tripDestinationAddress.trim()
   };
@@ -345,8 +345,8 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
 
       const doWork = (async () => {
         beginRoutingSession();
-        const requestFuelType = normalizeFuelType(fuelTypeInput);
-        const requestBrands = normalizeBrands(brandsInput);
+        const requestFuelType = normaliseFuelType(fuelTypeInput);
+        const requestBrands = normaliseBrands(brandsInput);
 
         const accessToken = await getAccessToken();
 
@@ -402,8 +402,8 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
       fuelTypeInput: string,
       brandsInput: string[]
     ) => {
-      const normalizedFuelType = normalizeFuelType(fuelTypeInput);
-      const normalizedBrands = normalizeBrands(brandsInput);
+      const normalizedFuelType = normaliseFuelType(fuelTypeInput);
+      const normalizedBrands = normaliseBrands(brandsInput);
       const samples: Coordinates[] = [start, midpointBetween(start, destination), destination];
       const responses = await Promise.allSettled(
         samples.map((sample) =>
@@ -480,8 +480,8 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
       const doWork = (async () => {
         beginRoutingSession();
         const requestId = ++latestRankingRequestIdRef.current;
-        const normalizedFuelType = normalizeFuelType(fuelTypeInput);
-        const normalizedBrands = normalizeBrands(brandsInput);
+        const normalizedFuelType = normaliseFuelType(fuelTypeInput);
+        const normalizedBrands = normaliseBrands(brandsInput);
         const accessToken = await getAccessToken();
         const tripData = await fetchTripCandidatePool(
           accessToken,
@@ -543,8 +543,8 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
         const prefs = await loadUserPreferences();
         if (cancelled) return;
 
-        const fuelTypeNorm = normalizeFuelType(prefs.fuelType);
-        const brandsNorm = normalizeBrands(prefs.selectedBrands);
+        const fuelTypeNorm = normaliseFuelType(prefs.fuelType);
+        const brandsNorm = normaliseBrands(prefs.selectedBrands);
 
         setAppMode(prefs.appMode);
         setUseCurrentLocation(prefs.useCurrentLocation);
@@ -669,8 +669,8 @@ function AppContent({ initialTab = 'prices', hideBottomNav = false, onNavigateTo
     const roundedFuelEconomy = roundToTwoDecimalPlaces(fuelEconomy);
     setFuelNeeded(roundedFuelNeeded);
     setFuelEconomy(roundedFuelEconomy);
-    const nextFuelType = normalizeFuelType(fuelType);
-    const nextBrands = normalizeBrands(selectedBrands);
+    const nextFuelType = normaliseFuelType(fuelType);
+    const nextBrands = normaliseBrands(selectedBrands);
     setFuelType(nextFuelType);
     setSelectedBrands(nextBrands);
 

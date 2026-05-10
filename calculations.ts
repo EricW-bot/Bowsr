@@ -13,7 +13,7 @@ import {
   routeMetricsFromKnownDistanceKm
 } from './routingClient';
 
-export const sanitizePositiveNumber = (value: string, fallback: number): number => {
+export const sanitisePositiveNumber = (value: string, fallback: number): number => {
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return fallback;
@@ -85,8 +85,8 @@ export async function computeRankedStations(
 ): Promise<RankedStation[]> {
   const { stations, prices } = data;
 
-  const neededLiters = sanitizePositiveNumber(neededStr, 50);
-  const economyLper100km = sanitizePositiveNumber(economyStr, 8.0);
+  const neededLiters = sanitisePositiveNumber(neededStr, 50);
+  const economyLper100km = sanitisePositiveNumber(economyStr, 8.0);
   const litersPerKm = economyLper100km / 100;
 
   const routeCandidateStations = stations.slice(0, MAX_ROUTE_CALCULATIONS);
@@ -287,8 +287,8 @@ export async function computeTripRankedStations(params: TripRankingParams): Prom
 
   const baselineRoute = await fetchRouteDistanceDuration(start, destination);
 
-  const neededLiters = sanitizePositiveNumber(neededStr, 50);
-  const economyLper100km = sanitizePositiveNumber(economyStr, 8.0);
+  const neededLiters = sanitisePositiveNumber(neededStr, 50);
+  const economyLper100km = sanitisePositiveNumber(economyStr, 8.0);
   const litersPerKm = economyLper100km / 100;
   const directLineKm = haversineStraightLineDistanceKm(
     start.latitude,

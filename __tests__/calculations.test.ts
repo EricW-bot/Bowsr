@@ -1,11 +1,11 @@
-import { computeTripNetCostDollars, keepFeasibleRankedStations, sanitizePositiveNumber } from '../calculations';
+import { computeTripNetCostDollars, keepFeasibleRankedStations, sanitisePositiveNumber } from '../calculations';
 
 describe('calculations helpers', () => {
   it('sanitizes invalid or non-positive numbers to fallback', () => {
-    expect(sanitizePositiveNumber('abc', 8)).toBe(8);
-    expect(sanitizePositiveNumber('0', 8)).toBe(8);
-    expect(sanitizePositiveNumber('-3', 8)).toBe(8);
-    expect(sanitizePositiveNumber('12.5', 8)).toBe(12.5);
+    expect(sanitisePositiveNumber('abc', 8)).toBe(8);
+    expect(sanitisePositiveNumber('0', 8)).toBe(8);
+    expect(sanitisePositiveNumber('-3', 8)).toBe(8);
+    expect(sanitisePositiveNumber('12.5', 8)).toBe(12.5);
   });
 
   it('computes trip net cost using only extra detour fuel burn', () => {

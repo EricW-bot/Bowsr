@@ -31,9 +31,9 @@ module.exports = () => {
     android: {
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
-        foregroundImage: './assets/android-logo.png',
-        backgroundImage: './assets/android-logo.png',
-        monochromeImage: './assets/android-logo.png'
+        foregroundImage: './assets/android-icon-foreground.png',
+        backgroundImage: './assets/android-icon-background.png',
+        monochromeImage: './assets/android-monochrome.png'
       },
       predictiveBackGestureEnabled: false,
       package: 'com.pickradmin.bowsr',
